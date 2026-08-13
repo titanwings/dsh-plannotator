@@ -45,6 +45,32 @@ interface Copy {
   shortcut: string
 }
 
+type PanelMode = 'docked' | 'drawer' | 'sheet'
+
+function readPanelMode(): PanelMode {
+  if (window.matchMedia?.('(max-width: 640px)').matches) return 'sheet'
+  if (window.matchMedia?.('(min-width: 1480px)').matches) return 'docked'
+  return 'drawer'
+}
+
+function usePanelMode(): PanelMode {
+  const [mode, setMode] = useState<PanelMode>(readPanelMode)
+
+  useEffect(() => {
+    const docked = window.matchMedia('(min-width: 1480px)')
+    const sheet = window.matchMedia('(max-width: 640px)')
+    const sync = (): void => { setMode(sheet.matches ? 'sheet' : docked.matches ? 'docked' : 'drawer') }
+    docked.addEventListener('change', sync)
+    sheet.addEventListener('change', sync)
+    return () => {
+      docked.removeEventListener('change', sync)
+      sheet.removeEventListener('change', sync)
+    }
+  }, [])
+
+  return mode
+}
+
 function copyOf(t: Translate): Copy {
   return {
     header: t('header'),
@@ -126,7 +152,13 @@ function PlannotatorReview({
   const [busy, setBusy] = useState<'approve' | 'feedback' | 'dismiss' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [confirmApprove, setConfirmApprove] = useState(false)
-  const [panelOpen, setPanelOpen] = useState(() => window.matchMedia?.('(min-width: 1025px)').matches ?? true)
+  const mode = usePanelMode()
+  const [openByMode, setOpenByMode] = useState<Record<PanelMode, boolean>>({
+    docked: true,
+    drawer: false,
+    sheet: false,
+  })
+  const panelOpen = openByMode[mode]
   const panelId = `dsh-plannotator-panel-${useId().replaceAll(':', '')}`
   const documentRef = useRef<HTMLDivElement>(null)
   const commentRef = useRef<HTMLTextAreaElement>(null)
@@ -152,14 +184,14 @@ function PlannotatorReview({
   }, [selection])
 
   const openPanel = (): void => {
-    setPanelOpen(true)
+    setOpenByMode(current => ({ ...current, [mode]: true }))
     requestAnimationFrame(() => { panelTitleRef.current?.focus() })
   }
   const closePanel = (): void => {
     window.getSelection()?.removeAllRanges()
     setSelection(null)
     setComment('')
-    setPanelOpen(false)
+    setOpenByMode(current => ({ ...current, [mode]: false }))
     requestAnimationFrame(() => { launcherRef.current?.focus() })
   }
 
@@ -249,6 +281,7 @@ function PlannotatorReview({
       aria-busy={busy !== null || undefined}
       data-dsh-plannotator=""
       data-plan-review-panel=""
+      data-panel-mode={mode}
     >
       <header className="dsh-plannotator-panel-header">
         <div className="dsh-plannotator-panel-heading">
@@ -386,12 +419,12 @@ function PlannotatorReview({
         </div>
       </footer>
     </aside>
-  ) : (
+  ) : mode === 'docked' ? (
     <button
       type="button"
       className="dsh-plannotator-rail-button"
+      data-panel-mode={mode}
       aria-label={copy.open}
-      aria-controls={panelId}
       aria-expanded="false"
       onClick={openPanel}
     >
@@ -399,7 +432,7 @@ function PlannotatorReview({
       <span>{copy.reopen}</span>
       {annotations.length > 0 && <strong>{annotations.length}</strong>}
     </button>
-  )
+  ) : null
 
   return (
     <>
@@ -413,7 +446,7 @@ function PlannotatorReview({
           type="button"
           ref={launcherRef}
           className="dsh-plannotator-blue-button"
-          aria-controls={panelId}
+          aria-controls={panelOpen ? panelId : undefined}
           aria-expanded={panelOpen}
           onClick={openPanel}
         >{copy.open}</button>

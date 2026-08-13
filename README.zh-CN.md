@@ -17,7 +17,7 @@
 
 </div>
 
-![DeepSeek Harness 中可折叠的右侧计划审阅栏](docs/01-sidebar-open-zh.png)
+![与 DeepSeek Harness 对话区并排的计划审阅栏](docs/01-sidebar-open-zh.png)
 
 > “第三步改一下”很模糊。把意见直接挂在准确原句上，Agent 才能保留上下文，
 > 正确修改计划。
@@ -30,10 +30,11 @@ Coding Agent 很会写计划，但严肃的软件工程任务很少能靠一个�
 **批准 / 拒绝**决定完成审阅。架构迁移、API 变更、安全修复和灰度发布，
 往往需要在实现前同时修正多个相互独立的问题。
 
-`dsh-plannotator` 把 DSH 原生 Plan Review 变成一条紧凑入口和一个可折叠的
-右侧审阅栏。输入区不再被整张大卡片占满；需要看对话时可以把审阅栏缩成
-右缘蓝色入口，随时再打开。所有意见仍通过 DSH 已有响应流程，以结构化
-Markdown 送回 Agent；Agent 留在 Plan mode 修改方案，然后再次请你审阅。
+`dsh-plannotator` 把 DSH 原生 Plan Review 变成一条紧凑入口和一个响应式
+审阅面板。宽屏上，对话区和审阅区分别占据独立列：打开审阅不会再遮住聊天
+文字，原本闲置的右侧空间也被真正利用起来。审阅栏可以缩成右缘蓝色入口，
+随时再打开。所有意见仍通过 DSH 已有响应流程，以结构化 Markdown 送回 Agent；
+Agent 留在 Plan mode 修改方案，然后再次请你审阅。
 
 这是一个受 [Plannotator](https://github.com/backnotprop/plannotator) 启发的
 非官方集成。
@@ -45,7 +46,7 @@ Markdown 送回 Agent；Agent 留在 Plan mode 修改方案，然后再次请你
 拖选文字即可精准批注；也可以双击段落、列表项、标题、加粗短语或代码片段，
 快速选中整个内容块。在当前计划版本内，引用原文与修改意见始终成对保留。
 
-![在右侧审阅栏中为安全要求添加精准批注](docs/02-precise-annotation-zh.png)
+![在并排审阅栏中为安全要求添加精准批注](docs/02-precise-annotation-zh.png)
 
 ### 一轮审完整份计划
 
@@ -79,8 +80,8 @@ Plan mode，并可以立刻给出修订版方案。
 | --- | --- |
 | 精准批注 | 文字拖选，以及稳定的“双击内容块”后备方式 |
 | 多意见审阅 | 原文锚点、来源跳转、删除与整体意见 |
-| 紧凑右侧栏 | 小型输入区入口、可折叠审阅栏和右缘重新打开控件 |
-| 原生 DSH 闭环 | 通过现有 pending interaction 批准、要求修改或回到聊天 |
+| 响应式审阅栏 | 宽屏并排、中等宽度按需抽屉、手机端底部面板 |
+| DSH 响应闭环 | 通过现有 pending interaction 批准、要求修改或回到聊天 |
 | 草稿恢复 | 无插件服务器、无第三方服务的本地尽力恢复 |
 | 审阅保护 | 拒绝过期计划草稿；丢弃未发送意见前必须明确确认 |
 | 界面适配 | 中英文文案、键盘快捷键、响应式布局与 DSH 主题变量 |
@@ -101,8 +102,8 @@ Plan mode，并可以立刻给出修订版方案。
 ## 使用流程
 
 1. 在 DSH Plan mode 中让 Coding Agent 生成一份计划。
-2. `exit_plan_mode` 进入 Plan Review 后，DSH 会显示紧凑入口，并在桌面端打开
-   右侧审阅栏。
+2. `exit_plan_mode` 进入 Plan Review 后，DSH 会显示紧凑入口。宽屏会在对话区
+   右侧并排打开审阅栏；较窄屏幕默认保持收起，点击 **打开审阅栏** 后再显示。
 3. 选中需要修改的准确原文；随时可以收起和重新打开审阅栏，不会提交审阅。
 4. 添加多条针对性意见，并按需填写整体反馈。
 5. 点击 **发送反馈**。Agent 会收到一份结构化审阅，并留在 Plan mode。
@@ -147,8 +148,11 @@ pnpm dsh plugin --profile web add /path/to/dsh-plannotator
 - 它审阅 Markdown 计划，不是通用文档编辑器、Git diff viewer、PR 发布器、
   文件树，也不是完整的 Plannotator 独立 SPA。
 - 草稿保存在当前浏览器 local storage，不会云同步；计划版本变化时会主动拒绝旧草稿。
-- 桌面端使用非模态的右侧抽屉；它不会抢占 DSH core 持有的 `details` slot，
-  不扫描宿主 DOM，也不改写 AppFrame grid。小屏幕会自动改成紧凑的底部面板。
+- 1480px 及以上会在 DSH 右侧预留 440–560px 的 companion column，审阅栏和
+  对话区不会重叠；较窄桌面使用按需抽屉，手机端使用紧凑底部面板。
+- 该面板由插件自身提供，不是 DSH core 的 `details` 面板。插件只在稳定的 Web
+  `#root` 挂载边界旁预留空间，让 AppFrame 正常重排，不向 core details grid
+  注册内容，也不改写它的列定义。
 - 不使用自定义 Host route、第三方服务或遥测；反馈走 DSH 现有响应通道。
 
 <details>
@@ -158,7 +162,8 @@ pnpm dsh plugin --profile web add /path/to/dsh-plannotator
 `package.json#dsh.client` 暴露 Web bundle。Client 注册自己的 locale namespace，
 并在优先级 `-10` 注册一条 `conversation.composer` chain entry，只选择 Plan
 Review 请求，排在默认问题渲染器之前。这个 contribution 负责渲染紧凑入口，
-并通过 React portal 挂载非模态右侧审阅栏。
+并通过 React portal 挂载插件自有的审阅面板。宽屏会在稳定的 Web root 旁预留
+同等宽度，较窄布局则复用同一个面板作为按需抽屉或底部面板。
 
 它没有 DSH core patch、平行 Agent loop、重复的持久化层或自建 scheduler。
 卸载 Cordis row 后，slot contribution 会被移除，内置界面自然重新出现。

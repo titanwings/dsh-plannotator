@@ -17,7 +17,7 @@ review to the agent—without leaving DeepSeek Harness.
 
 </div>
 
-![A real plan review in a collapsible right-side panel inside DeepSeek Harness](docs/01-sidebar-open-en.png)
+![A real plan review docked beside the DeepSeek Harness conversation](docs/01-sidebar-open-en.png)
 
 > “Change the third step” is vague. A comment attached to the exact sentence
 > preserves the context the agent needs to revise the plan correctly.
@@ -32,11 +32,12 @@ security fixes, and rollout plans often need several independent corrections
 before implementation begins.
 
 `dsh-plannotator` turns DSH's native Plan Review into a compact gate plus a
-collapsible right-side review panel. The composer stays small while the full
-review remains one click away; collapse it to a slim edge rail whenever you
-need the conversation back. Your comments travel through DSH's existing
-response flow as structured Markdown, so the agent can revise the proposal in
-plan mode and ask for review again.
+responsive companion panel. On a wide screen, the conversation and review
+occupy separate columns: opening the panel never covers chat text, and the
+otherwise empty right side becomes useful review space. Collapse it to a slim
+edge rail and reopen it without settling the request. Your comments still
+travel through DSH's existing response flow as structured Markdown, so the
+agent can revise the proposal in plan mode and ask for review again.
 
 This is an unofficial integration inspired by
 [Plannotator](https://github.com/backnotprop/plannotator).
@@ -49,7 +50,7 @@ Drag over text for a precise annotation, or double-click a paragraph, list
 item, heading, bold phrase, or code fragment. The review keeps the quote and
 comment together within the current plan revision.
 
-![Writing a precise annotation in the right-side review panel](docs/02-precise-annotation-en.png)
+![Writing a precise annotation in the docked review panel](docs/02-precise-annotation-en.png)
 
 ### Review the whole plan in one pass
 
@@ -88,8 +89,8 @@ silently discarding your work.
 | --- | --- |
 | Precise annotations | Text selection plus a reliable double-click block fallback |
 | Multi-comment review | Anchored comments, source navigation, deletion, and overall feedback |
-| Compact right panel | A small composer gate, collapsible review panel, and edge-rail reopen control |
-| Native DSH loop | Approve, request changes, or return to chat through the existing pending interaction |
+| Responsive review column | Side-by-side on wide screens, an on-demand drawer on narrower desktops, and a bottom sheet on phones |
+| DSH response loop | Approve, request changes, or return to chat through the existing pending interaction |
 | Draft recovery | Best-effort local recovery without a plugin server or third-party service |
 | Review safeguards | Stale-plan draft rejection and explicit confirmation before discarding feedback |
 | UI fit | English and Chinese copy, keyboard shortcuts, responsive layout, and DSH theme tokens |
@@ -111,8 +112,9 @@ before the first edit:
 ## How it works
 
 1. Ask the coding agent to create a plan in DSH Plan mode.
-2. When `exit_plan_mode` reaches Plan Review, DSH shows a compact gate and opens
-   the right-side review panel on desktop.
+2. When `exit_plan_mode` reaches Plan Review, DSH shows a compact gate. On wide
+   screens the review opens beside the conversation; narrower screens keep it
+   closed until you choose **Open review**.
 3. Select the exact text that needs work. Collapse and reopen the panel at any
    time without settling the review.
 4. Add as many targeted comments as necessary, plus optional overall feedback.
@@ -161,9 +163,12 @@ Restart `dsh web` after changing the installed Client plugin set.
   PR publisher, file tree, or the full standalone Plannotator SPA.
 - Drafts live in the current browser's local storage. They are not cloud-synced
   and are intentionally rejected when the plan revision changes.
-- The desktop review is a non-modal right-side drawer. It does not claim DSH's
-  core-owned `details` slot, scrape host DOM, or rewrite the AppFrame grid; on
-  small screens it becomes a compact bottom sheet.
+- At 1480px and above, the plugin reserves a 440–560px companion column beside
+  DSH, so the panel and conversation never overlap. Narrower desktops use an
+  on-demand drawer; phones use a compact bottom sheet.
+- The companion panel is plugin-owned, not DSH's core `details` panel. It uses
+  the stable Web `#root` mount boundary to reserve space and lets AppFrame
+  reflow normally; it does not register in or rewrite the core details grid.
 - No custom Host route, third-party service, or telemetry is used. Feedback
   travels through DSH's existing response channel.
 
@@ -174,8 +179,10 @@ The bundle inserts one Cordis Loader row. Its Host entry is deliberately a
 no-op; `package.json#dsh.client` exposes the Web bundle. The Client registers
 its locale namespace and a `conversation.composer` chain entry at priority
 `-10`, ahead of the default question renderer, and selects only Plan Review
-requests. That contribution renders the compact gate and a React portal for the
-non-modal right-side review panel.
+requests. That contribution renders the compact gate and mounts the
+plugin-owned panel through a React portal. Wide layouts reserve matching space
+at the stable Web root; narrower layouts reuse the panel as an on-demand drawer
+or bottom sheet.
 
 There is no DSH core patch, parallel agent loop, duplicate persistence layer,
 or custom scheduler. Unloading the Cordis row removes the slot contribution and
