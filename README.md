@@ -1,21 +1,36 @@
-# dsh-plannotator
-
 <div align="center">
 
-### Review the plan before your coding agent writes the code.
+# 📝 dsh-plannotator
 
-Select exact plan text, attach precise comments, and return one structured
-review to the agent—without leaving DeepSeek Harness.
+### *Review the plan before your coding agent writes the code.*
 
-[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek_Harness-Web-111827)](https://github.com/dsh2026/test-titanwings)
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek_Harness-Web-4D6BFE)](https://github.com/deepseek-ai)
 [![Plan Review](https://img.shields.io/badge/workflow-Plan_Review-4D6BFE)](#features)
-[![MIT License](https://img.shields.io/badge/license-MIT-2563EB)](LICENSE)
+[![MIT License](https://img.shields.io/badge/license-MIT-4D6BFE)](LICENSE)
+
+<br>
+
+<table align="center">
+<tr>
+<td align="left">
+① The plan sounds plausible, but one sentence hides a migration risk?<br>
+② You found several independent problems, but the only choices are Approve or Reject?<br>
+③ You want every comment to stay attached to the exact text the agent must revise?
+</td>
+</tr>
+</table>
+
+### ✨ Turn a binary plan gate into a precise, multi-comment review.
+
+Select exact plan text, collect precise comments, and return one structured review—without leaving DeepSeek Harness.
+
+[Why it exists](#why-dsh-plannotator) · [Features](#features) · [Install](#install) · [How it works](#how-it-works)
 
 **English** · [简体中文](README.zh-CN.md)
 
-[Why it exists](#why-dsh-plannotator) · [Features](#features) · [Install](#install)
-
 </div>
+
+---
 
 ![A real plan review docked beside the DeepSeek Harness conversation](docs/01-sidebar-open-en.png)
 
@@ -24,7 +39,11 @@ review to the agent—without leaving DeepSeek Harness.
 
 **Select exact text → comment on several risks → send one review → approve when ready.**
 
-## Why dsh-plannotator
+---
+
+<a id="why-dsh-plannotator"></a>
+
+## 🎯 Why dsh-plannotator
 
 Coding agents are good at producing plans, but a binary **Approve / Reject**
 decision is too coarse for serious work. Architecture migrations, API changes,
@@ -33,16 +52,19 @@ before implementation begins.
 
 `dsh-plannotator` turns DSH's native Plan Review into a compact gate plus a
 responsive companion panel. On a wide screen, the conversation and review
-occupy separate columns: opening the panel never covers chat text, and the
-otherwise empty right side becomes useful review space. Collapse it to a slim
-edge rail and reopen it without settling the request. Your comments still
-travel through DSH's existing response flow as structured Markdown, so the
+occupy separate columns, so opening the panel never covers chat text. Collapse
+it to a slim edge rail and reopen it without settling the request. Your comments
+still travel through DSH's existing response flow as structured Markdown, so the
 agent can revise the proposal in plan mode and ask for review again.
 
 This is an unofficial integration inspired by
 [Plannotator](https://github.com/backnotprop/plannotator).
 
-## Features
+---
+
+<a id="features"></a>
+
+## 🧰 Features
 
 ### Comment on the exact claim—not “somewhere in the plan”
 
@@ -56,8 +78,8 @@ comment together within the current plan revision.
 
 Collect multiple comments across compatibility, security, rollback, and tests;
 add overall feedback; click an annotation in the review panel to return to its
-source; then send one coherent review. This is much faster and less ambiguous
-than a sequence of chat messages.
+source; then send one coherent review. This keeps the review compact and less
+ambiguous than a sequence of detached chat messages.
 
 ![Three anchored comments and overall feedback in one review](docs/03-multi-comment-sidebar-en.png)
 
@@ -95,37 +117,11 @@ silently discarding your work.
 | Review safeguards | Stale-plan draft rejection and explicit confirmation before discarding feedback |
 | UI fit | English and Chinese copy, keyboard shortcuts, responsive layout, and DSH theme tokens |
 
-## Built for real coding plans
+---
 
-The screenshots above use a production authentication migration, not placeholder
-copy. The same workflow is useful whenever several plan details must be correct
-before the first edit:
+<a id="install"></a>
 
-| Plan | Useful review comments |
-| --- | --- |
-| Database or auth migration | Compatibility window, idempotent migration, rollback threshold, zero-downtime sequencing |
-| Public API refactor | Contract preservation, deprecation path, versioning, mobile or SDK compatibility |
-| Security change | Trust boundaries, CSRF and secret handling, audit evidence, failure behavior |
-| Deployment rollout | Feature-flag phases, observable stop conditions, owners, rollback rehearsal |
-| Test strategy | Missing failure cases, concurrency, restart recovery, regression and acceptance criteria |
-
-## How it works
-
-1. Ask the coding agent to create a plan in DSH Plan mode.
-2. When `exit_plan_mode` reaches Plan Review, DSH shows a compact gate. On wide
-   screens the review opens beside the conversation; narrower screens keep it
-   closed until you choose **Open review**.
-3. Select the exact text that needs work. Collapse and reopen the panel at any
-   time without settling the review.
-4. Add as many targeted comments as necessary, plus optional overall feedback.
-5. Choose **Send feedback**. The agent receives one structured review and stays
-   in plan mode.
-6. Review the revision and choose **Approve** when it is ready to implement.
-
-**Chat about it** dismisses the gate and returns to the ordinary composer.
-Removing the plugin restores DSH's built-in Plan Review automatically.
-
-## Install
+## 📦 Install
 
 Install the GitHub bundle into the DSH Web profile, then restart `dsh web`:
 
@@ -154,7 +150,43 @@ Restart `dsh web` after changing the installed Client plugin set.
 
 </details>
 
-## Compatibility and boundaries
+---
+
+<a id="how-it-works"></a>
+
+## 🔄 How it works
+
+1. Ask the coding agent to create a plan in DSH Plan mode.
+2. When `exit_plan_mode` reaches Plan Review, DSH shows a compact gate. On wide
+   screens the review opens beside the conversation; narrower screens keep it
+   closed until you choose **Open review**.
+3. Select the exact text that needs work. Collapse and reopen the panel at any
+   time without settling the review.
+4. Add as many targeted comments as necessary, plus optional overall feedback.
+5. Choose **Send feedback**. The agent receives one structured review and stays
+   in plan mode.
+6. Review the revision and choose **Approve** when it is ready to implement.
+
+**Chat about it** dismisses the gate and returns to the ordinary composer.
+Removing the plugin restores DSH's built-in Plan Review automatically.
+
+### Built for real coding plans
+
+The screenshots above use a production-style authentication migration example,
+not placeholder copy. The same workflow is useful whenever several plan details
+must be correct before the first edit:
+
+| Plan | Useful review comments |
+| --- | --- |
+| Database or auth migration | Compatibility window, idempotent migration, rollback threshold, zero-downtime sequencing |
+| Public API refactor | Contract preservation, deprecation path, versioning, mobile or SDK compatibility |
+| Security change | Trust boundaries, CSRF and secret handling, audit evidence, failure behavior |
+| Deployment rollout | Feature-flag phases, observable stop conditions, owners, rollback rehearsal |
+| Test strategy | Missing failure cases, concurrency, restart recovery, regression and acceptance criteria |
+
+---
+
+## 🧩 Compatibility and boundaries
 
 - Designed for the DeepSeek Harness **Web** client and Node.js 22.19+.
 - Claims only a valid, single-question DSH `plan-review` interaction. Other
@@ -190,7 +222,9 @@ reveals the built-in UI again.
 
 </details>
 
-## Development
+---
+
+## 🛠️ Development
 
 ```bash
 pnpm typecheck
@@ -202,7 +236,9 @@ The browser bundle follows DSH's `window.__ModuleLoader__` contract and treats
 React, ReactDOM, and DSH UI primitives as platform modules, preserving one React
 runtime.
 
-## Attribution
+---
+
+## 📜 Attribution
 
 This project is an unofficial integration and is not endorsed by the
 Plannotator maintainers. Its interaction model is inspired by Plannotator,

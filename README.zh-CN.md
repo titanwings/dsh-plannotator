@@ -1,21 +1,36 @@
-# dsh-plannotator
-
 <div align="center">
 
-### 让 Coding Agent 动手写代码前，先把计划审清楚。
+# 📝 dsh-plannotator
 
-直接选中计划原文、逐条精准批注，再把一份结构化审阅送回 Agent——
-整个过程都在 DeepSeek Harness 里完成。
+### *让 Coding Agent 动手写代码前，先把计划审清楚。*
 
-[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek_Harness-Web-111827)](https://github.com/dsh2026/test-titanwings)
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek_Harness-Web-4D6BFE)](https://github.com/deepseek-ai)
 [![Plan Review](https://img.shields.io/badge/workflow-Plan_Review-4D6BFE)](#核心功能)
-[![MIT License](https://img.shields.io/badge/license-MIT-2563EB)](LICENSE)
+[![MIT License](https://img.shields.io/badge/license-MIT-4D6BFE)](LICENSE)
+
+<br>
+
+<table align="center">
+<tr>
+<td align="left">
+① 计划看起来没问题，但其中一句可能藏着迁移风险？<br>
+② 你发现了几个相互独立的问题，却只能选择批准或拒绝？<br>
+③ 你希望每条意见都牢牢挂在 Agent 必须修改的准确原文上？
+</td>
+</tr>
+</table>
+
+### ✨ 把二选一的计划审批，变成精准的多意见审阅。
+
+直接选中计划原文、逐条精准批注，再把一份结构化审阅送回 Agent——整个过程都在 DeepSeek Harness 里完成。
+
+[为什么需要它](#为什么需要-dsh-plannotator) · [核心功能](#核心功能) · [安装](#安装) · [使用流程](#使用流程)
 
 [English](README.md) · **简体中文**
 
-[为什么需要它](#为什么需要-dsh-plannotator) · [核心功能](#核心功能) · [安装](#安装)
-
 </div>
+
+---
 
 ![与 DeepSeek Harness 对话区并排的计划审阅栏](docs/01-sidebar-open-zh.png)
 
@@ -24,22 +39,30 @@
 
 **选中原文 → 批注多个风险 → 一次发送审阅 → 满意后再批准。**
 
-## 为什么需要 dsh-plannotator
+---
+
+<a id="为什么需要-dsh-plannotator"></a>
+
+## 🎯 为什么需要 dsh-plannotator
 
 Coding Agent 很会写计划，但严肃的软件工程任务很少能靠一个简单的
 **批准 / 拒绝**决定完成审阅。架构迁移、API 变更、安全修复和灰度发布，
 往往需要在实现前同时修正多个相互独立的问题。
 
 `dsh-plannotator` 把 DSH 原生 Plan Review 变成一条紧凑入口和一个响应式
-审阅面板。宽屏上，对话区和审阅区分别占据独立列：打开审阅不会再遮住聊天
-文字，原本闲置的右侧空间也被真正利用起来。审阅栏可以缩成右缘蓝色入口，
-随时再打开。所有意见仍通过 DSH 已有响应流程，以结构化 Markdown 送回 Agent；
-Agent 留在 Plan mode 修改方案，然后再次请你审阅。
+审阅面板。宽屏上，对话区和审阅区分别占据独立列，打开审阅不会遮住聊天文字。
+审阅栏可以缩成右缘蓝色入口，随时再打开而不提交当前请求。所有意见仍通过
+DSH 已有响应流程，以结构化 Markdown 送回 Agent；Agent 留在 Plan mode 修改
+方案，然后再次请你审阅。
 
 这是一个受 [Plannotator](https://github.com/backnotprop/plannotator) 启发的
 非官方集成。
 
-## 核心功能
+---
+
+<a id="核心功能"></a>
+
+## 🧰 核心功能
 
 ### 评论准确的论点，而不是“计划里的某个地方”
 
@@ -51,8 +74,8 @@ Agent 留在 Plan mode 修改方案，然后再次请你审阅。
 ### 一轮审完整份计划
 
 可以同时收集兼容性、安全、回滚和测试等多处意见，再补充整体反馈；
-在右侧审阅栏点击批注即可回到对应原文，最后一次发送完整审阅。它比连续发
-多条聊天消息更快，也更不容易丢失上下文。
+在右侧审阅栏点击批注即可回到对应原文，最后一次发送完整审阅。这会让审阅
+更集中，也比几条彼此脱节的聊天消息更不容丢失上下文。
 
 ![一次审阅中的三条原文批注与整体意见](docs/03-multi-comment-sidebar-zh.png)
 
@@ -86,33 +109,11 @@ Plan mode，并可以立刻给出修订版方案。
 | 审阅保护 | 拒绝过期计划草稿；丢弃未发送意见前必须明确确认 |
 | 界面适配 | 中英文文案、键盘快捷键、响应式布局与 DSH 主题变量 |
 
-## 适合真实的 Coding 计划
+---
 
-上面的截图来自一个真实的生产认证迁移方案，不是占位文案。只要一个计划在首次
-修改代码前需要同时确认多个细节，这套工作流就很有用：
+<a id="安装"></a>
 
-| 计划类型 | 很适合批注的内容 |
-| --- | --- |
-| 数据库或认证迁移 | 兼容窗口、幂等迁移、回滚阈值、零停机顺序 |
-| 公共 API 重构 | 契约保持、废弃路径、版本策略、移动端或 SDK 兼容 |
-| 安全变更 | 信任边界、CSRF 与 secret 处理、审计证据、失败语义 |
-| 部署与灰度 | Feature flag 阶段、可观测停止条件、负责人、回滚演练 |
-| 测试策略 | 遗漏的失败场景、并发、重启恢复、回归与验收标准 |
-
-## 使用流程
-
-1. 在 DSH Plan mode 中让 Coding Agent 生成一份计划。
-2. `exit_plan_mode` 进入 Plan Review 后，DSH 会显示紧凑入口。宽屏会在对话区
-   右侧并排打开审阅栏；较窄屏幕默认保持收起，点击 **打开审阅栏** 后再显示。
-3. 选中需要修改的准确原文；随时可以收起和重新打开审阅栏，不会提交审阅。
-4. 添加多条针对性意见，并按需填写整体反馈。
-5. 点击 **发送反馈**。Agent 会收到一份结构化审阅，并留在 Plan mode。
-6. 审阅修订版，确认可以实施后再点击 **批准计划**。
-
-**继续讨论**会关闭当前 gate，回到普通输入框。卸载插件后，DSH 原生 Plan Review
-会自动恢复。
-
-## 安装
+## 📦 安装
 
 把 GitHub bundle 安装到 DSH Web profile，然后重启 `dsh web`：
 
@@ -141,7 +142,39 @@ pnpm dsh plugin --profile web add /path/to/dsh-plannotator
 
 </details>
 
-## 兼容性与边界
+---
+
+<a id="使用流程"></a>
+
+## 🔄 使用流程
+
+1. 在 DSH Plan mode 中让 Coding Agent 生成一份计划。
+2. `exit_plan_mode` 进入 Plan Review 后，DSH 会显示紧凑入口。宽屏会在对话区
+   右侧并排打开审阅栏；较窄屏幕默认保持收起，点击 **打开审阅栏** 后再显示。
+3. 选中需要修改的准确原文；随时可以收起和重新打开审阅栏，不会提交审阅。
+4. 添加多条针对性意见，并按需填写整体反馈。
+5. 点击 **发送反馈**。Agent 会收到一份结构化审阅，并留在 Plan mode。
+6. 审阅修订版，确认可以实施后再点击 **批准计划**。
+
+**继续讨论**会关闭当前 gate，回到普通输入框。卸载插件后，DSH 原生 Plan Review
+会自动恢复。
+
+### 适合真实的 Coding 计划
+
+上面的截图使用一个贴近生产场景的认证迁移示例，不是占位文案。只要一个计划在首次
+修改代码前需要同时确认多个细节，这套工作流就很有用：
+
+| 计划类型 | 很适合批注的内容 |
+| --- | --- |
+| 数据库或认证迁移 | 兼容窗口、幂等迁移、回滚阈值、零停机顺序 |
+| 公共 API 重构 | 契约保持、废弃路径、版本策略、移动端或 SDK 兼容 |
+| 安全变更 | 信任边界、CSRF 与 secret 处理、审计证据、失败语义 |
+| 部署与灰度 | Feature flag 阶段、可观测停止条件、负责人、回滚演练 |
+| 测试策略 | 遗漏的失败场景、并发、重启恢复、回归与验收标准 |
+
+---
+
+## 🧩 兼容性与边界
 
 - 面向 DeepSeek Harness **Web** 客户端，需要 Node.js 22.19+。
 - 只接管合法、单问题的 DSH `plan-review` 交互；其他问题会自动交还内置渲染器。
@@ -170,7 +203,9 @@ Review 请求，排在默认问题渲染器之前。这个 contribution 负责�
 
 </details>
 
-## 开发
+---
+
+## 🛠️ 开发
 
 ```bash
 pnpm typecheck
@@ -181,7 +216,9 @@ pnpm build
 浏览器 bundle 遵循 DSH 的 `window.__ModuleLoader__` contract，并把 React、
 ReactDOM 与 DSH UI primitives 当作平台模块，确保页面里只有一份 React runtime。
 
-## 致谢与许可
+---
+
+## 📜 致谢与许可
 
 本项目是非官方集成，未得到 Plannotator 维护者背书。交互模型受到 Plannotator
 启发；Plannotator 以 MIT 或 Apache-2.0 许可发布。详见
