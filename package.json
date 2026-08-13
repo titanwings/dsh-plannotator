@@ -29,12 +29,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dsh-external/dsh-plannotator.git"
+    "url": "git+https://github.com/titanwings/dsh-plannotator.git"
   },
   "bugs": {
-    "url": "https://github.com/dsh-external/dsh-plannotator/issues"
+    "url": "https://github.com/titanwings/dsh-plannotator/issues"
   },
-  "homepage": "https://github.com/dsh-external/dsh-plannotator#readme",
+  "homepage": "https://github.com/titanwings/dsh-plannotator#readme",
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
   },

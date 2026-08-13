@@ -126,7 +126,7 @@ silently discarding your work.
 Install the GitHub bundle into the DSH Web profile, then restart `dsh web`:
 
 ```bash
-dsh plugin --profile web add github:dsh-external/dsh-plannotator#main
+dsh plugin --profile web add github:titanwings/dsh-plannotator#v0.1.0
 ```
 
 For a repeatable installation, replace `main` with a reviewed commit SHA.

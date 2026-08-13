@@ -118,7 +118,7 @@ Plan mode，并可以立刻给出修订版方案。
 把 GitHub bundle 安装到 DSH Web profile，然后重启 `dsh web`：
 
 ```bash
-dsh plugin --profile web add github:dsh-external/dsh-plannotator#main
+dsh plugin --profile web add github:titanwings/dsh-plannotator#v0.1.0
 ```
 
 如需可重复安装，请把 `main` 换成已经审阅的 commit SHA。Git 依赖会在宿主机上
