@@ -1,44 +1,130 @@
 # dsh-plannotator
 
-An unofficial, native DeepSeek Harness integration inspired by
+<div align="center">
+
+### Review the plan before your coding agent writes the code.
+
+Select exact plan text, attach precise comments, and return one structured
+review to the agent—without leaving DeepSeek Harness.
+
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek_Harness-Web-111827)](https://github.com/dsh2026/test-titanwings)
+[![Plan Review](https://img.shields.io/badge/workflow-Plan_Review-F59E0B)](#features)
+[![MIT License](https://img.shields.io/badge/license-MIT-2563EB)](LICENSE)
+
+**English** · [简体中文](README.zh-CN.md)
+
+[Why it exists](#why-dsh-plannotator) · [Features](#features) · [Install](#install)
+
+</div>
+
+![A real multi-comment plan review inside DeepSeek Harness](docs/03-multi-comment-review-zh.png)
+
+> “Change the third step” is vague. A comment attached to the exact sentence
+> preserves the context the agent needs to revise the plan correctly.
+
+**Select exact text → comment on several risks → send one review → approve when ready.**
+
+## Why dsh-plannotator
+
+Coding agents are good at producing plans, but a binary **Approve / Reject**
+decision is too coarse for serious work. Architecture migrations, API changes,
+security fixes, and rollout plans often need several independent corrections
+before implementation begins.
+
+`dsh-plannotator` turns DSH's native Plan Review into a focused annotation
+workspace. Your comments stay attached to the plan statements they refer to,
+then travel back through DSH's existing response flow as structured Markdown.
+The agent stays in plan mode, revises the proposal, and asks for review again.
+
+This is an unofficial integration inspired by
 [Plannotator](https://github.com/backnotprop/plannotator).
 
-`dsh-plannotator` upgrades DSH's existing plan approval card into an
-annotation workspace. Select text in a Markdown plan, attach precise comments,
-add overall feedback, and return the complete review to the coding agent in one
-action.
+## Features
 
-It is not an iframe, a screenshot mock, or a second agent loop. The plugin
-answers DSH's real `exit_plan_mode` pending interaction:
+### Comment on the exact claim—not “somewhere in the plan”
 
-- **Approve** uses the asker's exact approval option and exits plan mode.
-- **Send feedback** returns a custom structured answer, keeps plan mode active,
-  and records the feedback in the tool result and Session Log.
-- **Chat about it** dismisses the gate and restores the ordinary composer.
+Drag over text for a precise annotation, or double-click a paragraph, list
+item, heading, bold phrase, or code fragment. The review keeps the quote and
+comment together within the current plan revision.
 
-Removing the plugin restores DSH's built-in Plan Review UI automatically.
+![Writing a precise annotation on the token migration step](docs/02-precise-comment-zh.png)
 
-## Screenshot
+### Review the whole plan in one pass
 
-![dsh-plannotator inside DeepSeek Harness](docs/dsh-plannotator-plan.png)
+Collect multiple comments across compatibility, security, rollback, and tests;
+add overall feedback; jump between annotations from the sidebar; then send one
+coherent review. This is much faster and less ambiguous than a sequence of chat
+messages.
 
-## Scope
+![Three anchored comments and overall feedback in one review](docs/03-multi-comment-review-zh.png)
 
-Version 0.1 intentionally implements only the high-value Plan Review loop:
+### Return actionable feedback to the agent
 
-- rendered Markdown plan
-- precise text-selection annotations plus a double-click block fallback
-- stable quote/context anchors for the lifetime of a review
-- annotation sidebar and overall feedback
-- draft recovery in browser storage, scoped by Session and pending request
-- explicit confirmation before approving with unsent comments
-- native DSH response, logging, replay, and unload behavior
+**Send feedback** answers the real `exit_plan_mode` interaction. DSH records the
+quoted plan text, each requested change, and the overall feedback in the tool
+result and Session Log. The agent remains in plan mode and can immediately
+produce a revised proposal.
 
-It does **not** duplicate Git trees, commit diffs, PR publishing, file editing,
-or Plannotator's full standalone SPA. Those surfaces already have stronger
-owners in the DSH ecosystem and are not needed to make plan feedback useful.
+![Structured feedback returned to the agent before it revises the plan](docs/05-feedback-round-trip-zh.png)
 
-## Install from this checkout
+### Protect unfinished reviews
+
+Unsent comments are saved locally in the browser, isolated by Session, pending
+request, and plan revision. If you try to approve while feedback is still
+pending, the plugin requires an explicit second confirmation instead of
+silently discarding your work.
+
+![Approval requires confirmation when comments have not been sent](docs/04-safe-approval-zh.png)
+
+| Capability | What you get |
+| --- | --- |
+| Precise annotations | Text selection plus a reliable double-click block fallback |
+| Multi-comment review | Anchored comments, sidebar navigation, deletion, and overall feedback |
+| Native DSH loop | Approve, request changes, or return to chat through the existing pending interaction |
+| Draft recovery | Best-effort local recovery without a plugin server or third-party service |
+| Review safeguards | Stale-plan draft rejection and explicit confirmation before discarding feedback |
+| UI fit | English and Chinese copy, keyboard shortcuts, responsive layout, and DSH theme tokens |
+
+## Built for real coding plans
+
+The screenshots above use a production authentication migration, not placeholder
+copy. The same workflow is useful whenever several plan details must be correct
+before the first edit:
+
+| Plan | Useful review comments |
+| --- | --- |
+| Database or auth migration | Compatibility window, idempotent migration, rollback threshold, zero-downtime sequencing |
+| Public API refactor | Contract preservation, deprecation path, versioning, mobile or SDK compatibility |
+| Security change | Trust boundaries, CSRF and secret handling, audit evidence, failure behavior |
+| Deployment rollout | Feature-flag phases, observable stop conditions, owners, rollback rehearsal |
+| Test strategy | Missing failure cases, concurrency, restart recovery, regression and acceptance criteria |
+
+## How it works
+
+1. Ask the coding agent to create a plan in DSH Plan mode.
+2. When `exit_plan_mode` opens Plan Review, select the exact text that needs work.
+3. Add as many targeted comments as necessary, plus optional overall feedback.
+4. Choose **Send feedback**. The agent receives one structured review and stays
+   in plan mode.
+5. Review the revision and choose **Approve** when it is ready to implement.
+
+**Chat about it** dismisses the gate and returns to the ordinary composer.
+Removing the plugin restores DSH's built-in Plan Review automatically.
+
+## Install
+
+Install the GitHub bundle into the DSH Web profile, then restart `dsh web`:
+
+```bash
+dsh plugin --profile web add github:dsh-external/dsh-plannotator#main
+```
+
+For a repeatable installation, replace `main` with a reviewed commit SHA.
+Git-based dependencies run their `prepare` script on the host; pnpm 10+ may
+require an `allowBuilds` entry for `@dsh-external/dsh-plannotator`.
+
+<details>
+<summary>Install from a local checkout</summary>
 
 Use Node.js 22.19+:
 
@@ -52,28 +138,33 @@ pnpm dsh plugin --profile web add /path/to/dsh-plannotator
 
 Restart `dsh web` after changing the installed Client plugin set.
 
-## Install from GitHub
+</details>
 
-Pin a reviewed commit because a Git dependency's `prepare` script runs on the
-host during installation:
+## Compatibility and boundaries
 
-```bash
-dsh plugin --profile web add github:dsh-external/dsh-plannotator#<commit-sha>
-```
+- Designed for the DeepSeek Harness **Web** client and Node.js 22.19+.
+- Claims only a valid, single-question DSH `plan-review` interaction. Other
+  questions fall through to the built-in renderer.
+- Reviews Markdown plans; it is not a general document editor, Git diff viewer,
+  PR publisher, file tree, or the full standalone Plannotator SPA.
+- Drafts live in the current browser's local storage. They are not cloud-synced
+  and are intentionally rejected when the plan revision changes.
+- No custom Host route, third-party service, or telemetry is used. Feedback
+  travels through DSH's existing response channel.
 
-pnpm 10+ may require an explicit `allowBuilds` entry for
-`@dsh-external/dsh-plannotator` before it runs the Git package's build.
-
-## Architecture
+<details>
+<summary>How it fits DSH's Cordis architecture</summary>
 
 The bundle inserts one Cordis Loader row. Its Host entry is deliberately a
 no-op; `package.json#dsh.client` exposes the Web bundle. The Client registers a
-`conversation.composer` chain entry at priority `-10` and claims only a valid
-single-question `plan-review` request. Every other question falls through to
-the built-in DSH renderer.
+`conversation.composer` chain entry at priority `-10`, ahead of the default
+question renderer, and selects only Plan Review requests.
 
-No DSH core patch, custom HTTP route, external service, telemetry, or network
-request is used.
+There is no DSH core patch, parallel agent loop, duplicate persistence layer,
+or custom scheduler. Unloading the Cordis row removes the slot contribution and
+reveals the built-in UI again.
+
+</details>
 
 ## Development
 

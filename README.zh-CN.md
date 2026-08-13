@@ -1,0 +1,173 @@
+# dsh-plannotator
+
+<div align="center">
+
+### 让 Coding Agent 动手写代码前，先把计划审清楚。
+
+直接选中计划原文、逐条精准批注，再把一份结构化审阅送回 Agent——
+整个过程都在 DeepSeek Harness 里完成。
+
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek_Harness-Web-111827)](https://github.com/dsh2026/test-titanwings)
+[![Plan Review](https://img.shields.io/badge/workflow-Plan_Review-F59E0B)](#核心功能)
+[![MIT License](https://img.shields.io/badge/license-MIT-2563EB)](LICENSE)
+
+[English](README.md) · **简体中文**
+
+[为什么需要它](#为什么需要-dsh-plannotator) · [核心功能](#核心功能) · [安装](#安装)
+
+</div>
+
+![DeepSeek Harness 中真实的多批注计划审阅](docs/03-multi-comment-review-zh.png)
+
+> “第三步改一下”很模糊。把意见直接挂在准确原句上，Agent 才能保留上下文，
+> 正确修改计划。
+
+**选中原文 → 批注多个风险 → 一次发送审阅 → 满意后再批准。**
+
+## 为什么需要 dsh-plannotator
+
+Coding Agent 很会写计划，但严肃的软件工程任务很少能靠一个简单的
+**批准 / 拒绝**决定完成审阅。架构迁移、API 变更、安全修复和灰度发布，
+往往需要在实现前同时修正多个相互独立的问题。
+
+`dsh-plannotator` 把 DSH 原生的 Plan Review 变成一个专注的批注工作区。
+每条意见都和它对应的计划原文放在一起，再通过 DSH 已有的响应流程，
+以结构化 Markdown 送回 Agent。Agent 会留在 Plan mode，修改方案，然后再次
+请你审阅。
+
+这是一个受 [Plannotator](https://github.com/backnotprop/plannotator) 启发的
+非官方集成。
+
+## 核心功能
+
+### 评论准确的论点，而不是“计划里的某个地方”
+
+拖选文字即可精准批注；也可以双击段落、列表项、标题、加粗短语或代码片段，
+快速选中整个内容块。在当前计划版本内，引用原文与修改意见始终成对保留。
+
+![为 token 迁移步骤添加精准批注](docs/02-precise-comment-zh.png)
+
+### 一轮审完整份计划
+
+可以同时收集兼容性、安全、回滚和测试等多处意见，再补充整体反馈；
+通过侧栏在批注与原文间跳转，最后一次发送完整审阅。它比连续发多条聊天消息
+更快，也更不容易丢失上下文。
+
+![一次审阅中的三条原文批注与整体意见](docs/03-multi-comment-review-zh.png)
+
+### 把可执行的反馈真正送回 Agent
+
+点击 **发送反馈** 会回答真实的 `exit_plan_mode` 交互。DSH 会把引用的计划原文、
+每一条修改要求和整体意见记录在 tool result 与 Session Log 中。Agent 会继续留在
+Plan mode，并可以立刻给出修订版方案。
+
+![结构化审阅已经返回 Agent，Agent 开始修订计划](docs/05-feedback-round-trip-zh.png)
+
+### 保护尚未完成的审阅
+
+未发送的意见会保存在当前浏览器本地，并按 Session、待处理请求和计划版本隔离。
+如果还有意见没有发送就点击批准，插件会要求第二次明确确认，不会悄悄丢掉你的工作。
+
+![存在未发送批注时，批准计划需要二次确认](docs/04-safe-approval-zh.png)
+
+| 能力 | 你得到什么 |
+| --- | --- |
+| 精准批注 | 文字拖选，以及稳定的“双击内容块”后备方式 |
+| 多意见审阅 | 原文锚点、批注侧栏、跳转、删除与整体意见 |
+| 原生 DSH 闭环 | 通过现有 pending interaction 批准、要求修改或回到聊天 |
+| 草稿恢复 | 无插件服务器、无第三方服务的本地尽力恢复 |
+| 审阅保护 | 拒绝过期计划草稿；丢弃未发送意见前必须明确确认 |
+| 界面适配 | 中英文文案、键盘快捷键、响应式布局与 DSH 主题变量 |
+
+## 适合真实的 Coding 计划
+
+上面的截图来自一个真实的生产认证迁移方案，不是占位文案。只要一个计划在首次
+修改代码前需要同时确认多个细节，这套工作流就很有用：
+
+| 计划类型 | 很适合批注的内容 |
+| --- | --- |
+| 数据库或认证迁移 | 兼容窗口、幂等迁移、回滚阈值、零停机顺序 |
+| 公共 API 重构 | 契约保持、废弃路径、版本策略、移动端或 SDK 兼容 |
+| 安全变更 | 信任边界、CSRF 与 secret 处理、审计证据、失败语义 |
+| 部署与灰度 | Feature flag 阶段、可观测停止条件、负责人、回滚演练 |
+| 测试策略 | 遗漏的失败场景、并发、重启恢复、回归与验收标准 |
+
+## 使用流程
+
+1. 在 DSH Plan mode 中让 Coding Agent 生成一份计划。
+2. `exit_plan_mode` 打开 Plan Review 后，选中需要修改的准确原文。
+3. 添加多条针对性意见，并按需填写整体反馈。
+4. 点击 **发送反馈**。Agent 会收到一份结构化审阅，并留在 Plan mode。
+5. 审阅修订版，确认可以实施后再点击 **批准计划**。
+
+**继续讨论**会关闭当前 gate，回到普通输入框。卸载插件后，DSH 原生 Plan Review
+会自动恢复。
+
+## 安装
+
+把 GitHub bundle 安装到 DSH Web profile，然后重启 `dsh web`：
+
+```bash
+dsh plugin --profile web add github:dsh-external/dsh-plannotator#main
+```
+
+如需可重复安装，请把 `main` 换成已经审阅的 commit SHA。Git 依赖会在宿主机上
+运行自己的 `prepare`；pnpm 10+ 可能需要为 `@dsh-external/dsh-plannotator`
+添加 `allowBuilds` 配置。
+
+<details>
+<summary>从本地 checkout 安装</summary>
+
+需要 Node.js 22.19+：
+
+```bash
+pnpm install
+pnpm check
+
+cd /path/to/deepseek-harness
+pnpm dsh plugin --profile web add /path/to/dsh-plannotator
+```
+
+修改已安装的 Client 插件集合后，请重启 `dsh web`。
+
+</details>
+
+## 兼容性与边界
+
+- 面向 DeepSeek Harness **Web** 客户端，需要 Node.js 22.19+。
+- 只接管合法、单问题的 DSH `plan-review` 交互；其他问题会自动交还内置渲染器。
+- 它审阅 Markdown 计划，不是通用文档编辑器、Git diff viewer、PR 发布器、
+  文件树，也不是完整的 Plannotator 独立 SPA。
+- 草稿保存在当前浏览器 local storage，不会云同步；计划版本变化时会主动拒绝旧草稿。
+- 不使用自定义 Host route、第三方服务或遥测；反馈走 DSH 现有响应通道。
+
+<details>
+<summary>它如何遵循 DSH 的 Cordis 架构</summary>
+
+这个 bundle 只插入一条 Cordis Loader row。Host 入口有意保持 no-op；
+`package.json#dsh.client` 暴露 Web bundle。Client 在优先级 `-10` 注册一条
+`conversation.composer` chain entry，只选择 Plan Review 请求，并排在默认问题
+渲染器之前。
+
+它没有 DSH core patch、平行 Agent loop、重复的持久化层或自建 scheduler。
+卸载 Cordis row 后，slot contribution 会被移除，内置界面自然重新出现。
+
+</details>
+
+## 开发
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+浏览器 bundle 遵循 DSH 的 `window.__ModuleLoader__` contract，并把 React 与 DSH UI
+primitives 当作平台模块，确保页面里只有一份 React runtime。
+
+## 致谢与许可
+
+本项目是非官方集成，未得到 Plannotator 维护者背书。交互模型受到 Plannotator
+启发；Plannotator 以 MIT 或 Apache-2.0 许可发布。详见
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 与
+[LICENSES/Plannotator-MIT.txt](LICENSES/Plannotator-MIT.txt)。
