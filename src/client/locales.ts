@@ -23,6 +23,7 @@ export const en = {
   sendMany: 'Send {count} comments',
   commentButton: 'Comment',
   delete: 'Delete annotation {number}',
+  goTo: 'Go to annotation {number}',
   shortcut: 'Add with Ctrl/⌘ Enter',
 } as const
 
@@ -53,5 +54,6 @@ export const zh: Record<PlannotatorKey, string> = {
   sendMany: '发送 {count} 条反馈',
   commentButton: '添加批注',
   delete: '删除第 {number} 条批注',
+  goTo: '跳转到第 {number} 条批注',
   shortcut: 'Ctrl/⌘ Enter 添加',
 }

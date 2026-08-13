@@ -23,6 +23,7 @@ export declare const en: {
     readonly sendMany: "Send {count} comments";
     readonly commentButton: "Comment";
     readonly delete: "Delete annotation {number}";
+    readonly goTo: "Go to annotation {number}";
     readonly shortcut: "Add with Ctrl/⌘ Enter";
 };
 export type PlannotatorKey = keyof typeof en;

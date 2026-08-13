@@ -1,6 +1,6 @@
 {
   "name": "@dsh-external/dsh-plannotator",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Unofficial Plannotator integration for DeepSeek Harness: annotate plans inline and return structured feedback to the waiting coding agent",
   "type": "module",
   "main": "./lib/index.js",
@@ -55,8 +55,9 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --import tsx --test tests/*.test.ts",
-    "check": "npm run typecheck && npm test && npm run build"
+    "pretest": "npm run build",
+    "test": "node --import tsx --test tests/*.test.ts tests/*.test.tsx",
+    "check": "npm run typecheck && npm test"
   },
   "peerDependencies": {
     "react": "^18.2.0",
@@ -71,10 +72,12 @@
     }
   },
   "devDependencies": {
+    "@types/jsdom": "^28.0.3",
     "@types/node": "^22.0.0",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.1",
     "esbuild": "^0.25.0",
+    "jsdom": "^29.1.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tsx": "^4.20.0",

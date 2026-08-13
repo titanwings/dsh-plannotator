@@ -1,4 +1,5 @@
 const STYLE_ID = 'dsh-plannotator-styles'
+const STYLE_OWNERS = 'data-dsh-plannotator-style-owners'
 
 const CSS_TEXT = String.raw`
 .dsh-plannotator-launcher,.dsh-plannotator-panel,.dsh-plannotator-panel *,.dsh-plannotator-rail-button{box-sizing:border-box}
@@ -39,11 +40,28 @@ const CSS_TEXT = String.raw`
 
 /** Install the plugin's namespaced CSS and return an unload disposer. */
 export function installStyles(): () => void {
-  const existing = document.getElementById(STYLE_ID)
-  if (existing !== null) return () => undefined
-  const style = document.createElement('style')
-  style.id = STYLE_ID
-  style.textContent = CSS_TEXT
-  document.head.append(style)
-  return () => { style.remove() }
+  let style = document.getElementById(STYLE_ID)
+  // A pre-refcount client can still own the existing node and remove it when
+  // its old fiber unloads. Detach that legacy node and create one owned only
+  // by refcount-aware clients, so the stale disposer cannot delete our CSS.
+  if (style !== null && !style.hasAttribute(STYLE_OWNERS)) {
+    style.remove()
+    style = null
+  }
+  if (style === null) {
+    style = document.createElement('style')
+    style.id = STYLE_ID
+    style.textContent = CSS_TEXT
+    document.head.append(style)
+  }
+  const owners = Number.parseInt(style.getAttribute(STYLE_OWNERS) ?? '0', 10)
+  style.setAttribute(STYLE_OWNERS, String(Number.isSafeInteger(owners) ? owners + 1 : 1))
+  let disposed = false
+  return () => {
+    if (disposed) return
+    disposed = true
+    const current = Number.parseInt(style.getAttribute(STYLE_OWNERS) ?? '1', 10)
+    if (current <= 1) style.remove()
+    else style.setAttribute(STYLE_OWNERS, String(current - 1))
+  }
 }

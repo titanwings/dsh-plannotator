@@ -19,6 +19,7 @@ import {
   applyAnnotationHighlights, elementAnchor, rangeForAnchor, selectionAnchor,
   type SelectionAnchor,
 } from './selection.js'
+import { panelModeForWidth, type PanelMode } from './layout.js'
 
 interface Copy {
   header: string
@@ -42,15 +43,12 @@ interface Copy {
   send: (count: number) => string
   commentButton: string
   delete: (number: number) => string
+  goTo: (number: number) => string
   shortcut: string
 }
 
-type PanelMode = 'docked' | 'drawer' | 'sheet'
-
 function readPanelMode(): PanelMode {
-  if (window.matchMedia?.('(max-width: 640px)').matches) return 'sheet'
-  if (window.matchMedia?.('(min-width: 1480px)').matches) return 'docked'
-  return 'drawer'
+  return panelModeForWidth(window.innerWidth)
 }
 
 function usePanelMode(): PanelMode {
@@ -94,6 +92,7 @@ function copyOf(t: Translate): Copy {
     send: count => t(count === 1 ? 'sendOne' : 'sendMany', { count }),
     commentButton: t('commentButton'),
     delete: number => t('delete', { number }),
+    goTo: number => t('goTo', { number }),
     shortcut: t('shortcut'),
   }
 }
@@ -218,6 +217,19 @@ function PlannotatorReview({
     setConfirmApprove(false)
   }
 
+  const repositionSelection = (): void => {
+    const root = documentRef.current
+    if (root === null) return
+    setSelection(current => {
+      if (current === null) return null
+      const range = rangeForAnchor(root, current.start, current.end)
+      if (range === undefined) return current
+      const rect = range.getBoundingClientRect()
+      if (rect.left === current.rect.left && rect.bottom === current.rect.bottom) return current
+      return { ...current, rect: { left: rect.left, bottom: rect.bottom } }
+    })
+  }
+
   const onKeyUp = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.key === 'Shift' || event.shiftKey) captureSelection()
   }
@@ -311,6 +323,7 @@ function PlannotatorReview({
           onMouseUp={captureSelection}
           onDoubleClick={captureBlock}
           onKeyUp={onKeyUp}
+          onScroll={repositionSelection}
         >
           <MarkdownText text={review.plan} />
         </div>
@@ -361,7 +374,12 @@ function PlannotatorReview({
           {annotations.map((annotation, index) => (
             <section className="dsh-plannotator-annotation" key={annotation.id}>
               <div className="dsh-plannotator-annotation-head">
-                <button type="button" className="dsh-plannotator-icon-button" onClick={() => { focusAnnotation(annotation) }}>#{index + 1}</button>
+                <button
+                  type="button"
+                  className="dsh-plannotator-icon-button"
+                  aria-label={copy.goTo(index + 1)}
+                  onClick={() => { focusAnnotation(annotation) }}
+                >#{index + 1}</button>
                 <button
                   type="button"
                   className="dsh-plannotator-icon-button"

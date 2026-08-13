@@ -120,7 +120,7 @@ Plan mode，并可以立刻给出修订版方案。
 把 GitHub bundle 安装到 DSH Web profile，然后重启 `dsh web`：
 
 ```bash
-dsh plugin --profile web add github:titanwings/dsh-plannotator#v0.1.1
+dsh plugin --profile web add github:titanwings/dsh-plannotator#v0.1.2
 ```
 
 仓库已随附构建完成的 Host 与 Web bundle，因此安装时不会运行包构建脚本，
