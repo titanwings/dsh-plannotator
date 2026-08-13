@@ -1,9 +1,12 @@
 import {
-  useCallback, useEffect, useMemo, useRef, useState,
+  useCallback, useEffect, useId, useMemo, useRef, useState,
   type KeyboardEvent, type MouseEvent,
 } from 'react'
-import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { QuestionWait } from './contracts.js'
+import { createPortal } from 'react-dom'
+import {
+  Button, IconChevronLeftOutline14, IconChevronRightOutline14, IconEditOutline16, MarkdownText,
+} from '@deepseek-ai/dsh-client-ui-primitives'
+import type { QuestionWait, Translate } from './contracts.js'
 import {
   parseStoredDraft, planRevision, renderPlanFeedback,
   type PlanAnnotation,
@@ -19,6 +22,11 @@ import {
 
 interface Copy {
   header: string
+  ready: string
+  readyHint: string
+  open: string
+  reopen: string
+  collapse: string
   annotation: (count: number) => string
   selectHint: string
   newComment: string
@@ -33,45 +41,35 @@ interface Copy {
   discardConfirm: string
   send: (count: number) => string
   commentButton: string
-  delete: string
+  delete: (number: number) => string
+  shortcut: string
 }
 
-const EN: Copy = {
-  header: 'Plannotator · Plan review',
-  annotation: count => `${count} annotation${count === 1 ? '' : 's'}`,
-  selectHint: 'Select text for a precise comment, or double-click a plan block.',
-  newComment: 'New annotation',
-  commentPlaceholder: 'What should the agent change here?',
-  add: 'Add comment',
-  cancel: 'Cancel',
-  overall: 'Overall feedback',
-  overallPlaceholder: 'Optional feedback about the plan as a whole…',
-  discuss: 'Chat about it',
-  approve: 'Approve',
-  approveAnyway: 'Approve anyway',
-  discardConfirm: 'Your unsent annotations will be discarded.',
-  send: count => `Send ${count} comment${count === 1 ? '' : 's'}`,
-  commentButton: 'Comment',
-  delete: 'Delete annotation',
-}
-
-const ZH: Copy = {
-  header: 'Plannotator · 计划审阅',
-  annotation: count => `${count} 条批注`,
-  selectHint: '拖选文字做精确批注，或双击任意计划块快速批注。',
-  newComment: '新批注',
-  commentPlaceholder: '希望 Agent 在这里修改什么？',
-  add: '添加批注',
-  cancel: '取消',
-  overall: '整体意见',
-  overallPlaceholder: '对整份计划的补充意见（可选）…',
-  discuss: '继续讨论',
-  approve: '批准计划',
-  approveAnyway: '仍然批准',
-  discardConfirm: '尚未发送的批注将被丢弃。',
-  send: count => `发送 ${count} 条反馈`,
-  commentButton: '添加批注',
-  delete: '删除批注',
+function copyOf(t: Translate): Copy {
+  return {
+    header: t('header'),
+    ready: t('ready'),
+    readyHint: t('readyHint'),
+    open: t('open'),
+    reopen: t('reopen'),
+    collapse: t('collapse'),
+    annotation: count => t(count === 1 ? 'annotationOne' : 'annotationMany', { count }),
+    selectHint: t('selectHint'),
+    newComment: t('newComment'),
+    commentPlaceholder: t('commentPlaceholder'),
+    add: t('add'),
+    cancel: t('cancel'),
+    overall: t('overall'),
+    overallPlaceholder: t('overallPlaceholder'),
+    discuss: t('discuss'),
+    approve: t('approve'),
+    approveAnyway: t('approveAnyway'),
+    discardConfirm: t('discardConfirm'),
+    send: count => t(count === 1 ? 'sendOne' : 'sendMany', { count }),
+    commentButton: t('commentButton'),
+    delete: number => t('delete', { number }),
+    shortcut: t('shortcut'),
+  }
 }
 
 function draftKey(wait: QuestionWait): string {
@@ -96,19 +94,28 @@ function removeDraft(key: string): void {
   try { localStorage.removeItem(key) } catch { /* Draft recovery is best-effort. */ }
 }
 
-export function PlannotatorPanel({ matched }: { readonly matched: QuestionWait }) {
+export function PlannotatorPanel({
+  matched,
+  t,
+}: {
+  readonly matched: QuestionWait
+  readonly t: Translate
+}) {
   const review = planReviewOf(matched)
   if (review === undefined) return null
-  return <PlannotatorReview key={`${matched.sessionId}:${matched.key}`} matched={matched} review={review} />
+  return <PlannotatorReview key={`${matched.sessionId}:${matched.key}`} matched={matched} review={review} t={t} />
 }
 
 function PlannotatorReview({
-  matched, review,
+  matched, review, t,
 }: {
   readonly matched: QuestionWait
   readonly review: PlanReview
+  readonly t: Translate
 }) {
-  const copy = document.documentElement.lang.toLowerCase().startsWith('zh') ? ZH : EN
+  // DSH keeps the namespace translator identity stable across locale changes.
+  // Resolve copy on every render so a locale revision is reflected immediately.
+  const copy = copyOf(t)
   const revision = useMemo(() => planRevision(review.plan), [review.plan])
   const storageKey = useMemo(() => draftKey(matched), [matched])
   const restored = useMemo(() => parseStoredDraft(readDraft(storageKey), revision), [storageKey, revision])
@@ -119,8 +126,12 @@ function PlannotatorReview({
   const [busy, setBusy] = useState<'approve' | 'feedback' | 'dismiss' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [confirmApprove, setConfirmApprove] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(() => window.matchMedia?.('(min-width: 1025px)').matches ?? true)
+  const panelId = `dsh-plannotator-panel-${useId().replaceAll(':', '')}`
   const documentRef = useRef<HTMLDivElement>(null)
   const commentRef = useRef<HTMLTextAreaElement>(null)
+  const launcherRef = useRef<HTMLButtonElement>(null)
+  const panelTitleRef = useRef<HTMLHeadingElement>(null)
 
   useEffect(() => {
     if (annotations.length === 0 && general.trim() === '') {
@@ -134,11 +145,23 @@ function PlannotatorReview({
     const root = documentRef.current
     if (root === null) return
     return applyAnnotationHighlights(root, annotations)
-  }, [annotations])
+  }, [annotations, panelOpen])
 
   useEffect(() => {
     if (selection !== null) commentRef.current?.focus()
   }, [selection])
+
+  const openPanel = (): void => {
+    setPanelOpen(true)
+    requestAnimationFrame(() => { panelTitleRef.current?.focus() })
+  }
+  const closePanel = (): void => {
+    window.getSelection()?.removeAllRanges()
+    setSelection(null)
+    setComment('')
+    setPanelOpen(false)
+    requestAnimationFrame(() => { launcherRef.current?.focus() })
+  }
 
   const captureSelection = useCallback(() => {
     const root = documentRef.current
@@ -213,88 +236,189 @@ function PlannotatorReview({
     if (root === null) return
     const range = rangeForAnchor(root, annotation.start, annotation.end)
     const element = range?.startContainer.parentElement
-    element?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    element?.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' })
   }
 
-  return (
-    <div className="dsh-plannotator-frame" data-plan-review-key={matched.key} data-dsh-plannotator="">
-      <section className="dsh-plannotator-card" aria-label={review.question}>
-        <header className="dsh-plannotator-strip">
-          <span className="dsh-plannotator-brand"><span className="dsh-plannotator-dot" />{copy.header}</span>
-          <span className="dsh-plannotator-count">{copy.annotation(annotations.length)}</span>
-        </header>
-        <div className="dsh-plannotator-workspace">
-          <div
-            ref={documentRef}
-            className="dsh-plannotator-document"
-            data-plannotator-document=""
-            onMouseUp={captureSelection}
-            onDoubleClick={captureBlock}
-            onKeyUp={onKeyUp}
+  const feedbackCount = annotations.length + (general.trim() === '' ? 0 : 1)
+  const panel = panelOpen ? (
+    <aside
+      id={panelId}
+      className="dsh-plannotator-panel"
+      aria-labelledby={`${panelId}-title`}
+      aria-busy={busy !== null || undefined}
+      data-dsh-plannotator=""
+      data-plan-review-panel=""
+    >
+      <header className="dsh-plannotator-panel-header">
+        <div className="dsh-plannotator-panel-heading">
+          <span className="dsh-plannotator-dot" />
+          <div>
+            <h2 id={`${panelId}-title`} ref={panelTitleRef} tabIndex={-1}>{copy.header}</h2>
+            <span>{copy.annotation(annotations.length)}</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="dsh-plannotator-collapse"
+          aria-label={copy.collapse}
+          aria-controls={panelId}
+          aria-expanded="true"
+          onClick={closePanel}
+        >
+          <IconChevronRightOutline14 />
+        </button>
+      </header>
+
+      <div className="dsh-plannotator-workspace">
+        <div
+          ref={documentRef}
+          className="dsh-plannotator-document"
+          data-plannotator-document=""
+          onMouseUp={captureSelection}
+          onDoubleClick={captureBlock}
+          onKeyUp={onKeyUp}
+        >
+          <MarkdownText text={review.plan} />
+        </div>
+
+        {selection !== null && (
+          <button
+            type="button"
+            className="dsh-plannotator-selection-action"
+            style={{
+              left: Math.min(window.innerWidth - 148, Math.max(8, selection.rect.left)),
+              top: Math.min(window.innerHeight - 48, selection.rect.bottom),
+            }}
+            onMouseDown={(event: MouseEvent) => { event.preventDefault() }}
+            onClick={() => { commentRef.current?.focus() }}
           >
-            <MarkdownText text={review.plan} />
+            ＋ {copy.commentButton}
+          </button>
+        )}
+
+        <section className="dsh-plannotator-review" aria-label={copy.annotation(annotations.length)}>
+          <div className="dsh-plannotator-review-title">
+            <span>{copy.annotation(annotations.length)}</span>
+            <span>{copy.shortcut}</span>
           </div>
           {selection !== null && (
-            <button
-              type="button"
-              className="dsh-plannotator-selection-action"
-              style={{ left: Math.max(8, selection.rect.left), top: selection.rect.bottom }}
-              onMouseDown={(event: MouseEvent) => { event.preventDefault() }}
-              onClick={() => { commentRef.current?.focus() }}
-            >
-              ＋ {copy.commentButton}
-            </button>
-          )}
-          <aside className="dsh-plannotator-rail" aria-label={copy.annotation(annotations.length)}>
-            <div className="dsh-plannotator-rail-title"><span>{copy.annotation(annotations.length)}</span><span>Ctrl/⌘ ↵</span></div>
-            {selection !== null && (
-              <section className="dsh-plannotator-new">
-                <div className="dsh-plannotator-annotation-head"><strong>{copy.newComment}</strong></div>
-                <div className="dsh-plannotator-quote">{selection.quote}</div>
-                <textarea
-                  ref={commentRef}
-                  className="dsh-plannotator-textarea"
-                  value={comment}
-                  aria-label={copy.newComment}
-                  placeholder={copy.commentPlaceholder}
-                  onChange={event => { setComment(event.target.value) }}
-                  onKeyDown={event => {
-                    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') addComment()
-                    if (event.key === 'Escape') { setSelection(null); setComment('') }
-                  }}
-                />
-                <div className="dsh-plannotator-mini-actions">
-                  <button type="button" className="dsh-plannotator-button" onClick={() => { setSelection(null); setComment('') }}>{copy.cancel}</button>
-                  <button type="button" className="dsh-plannotator-button dsh-plannotator-button-warn" disabled={comment.trim() === ''} onClick={addComment}>{copy.add}</button>
-                </div>
-              </section>
-            )}
-            {annotations.map((annotation, index) => (
-              <section className="dsh-plannotator-annotation" key={annotation.id}>
-                <div className="dsh-plannotator-annotation-head">
-                  <button type="button" className="dsh-plannotator-icon-button" onClick={() => { focusAnnotation(annotation) }}>#{index + 1}</button>
-                  <button type="button" className="dsh-plannotator-icon-button" aria-label={copy.delete} onClick={() => { setAnnotations(current => current.filter(item => item.id !== annotation.id)) }}>×</button>
-                </div>
-                <button type="button" className="dsh-plannotator-icon-button dsh-plannotator-quote" onClick={() => { focusAnnotation(annotation) }}>{annotation.quote}</button>
-                <div className="dsh-plannotator-comment">{annotation.comment}</div>
-              </section>
-            ))}
-            {selection === null && annotations.length === 0 && <div className="dsh-plannotator-empty">{copy.selectHint}</div>}
-            <section className="dsh-plannotator-general">
-              <div className="dsh-plannotator-annotation-head"><strong>{copy.overall}</strong></div>
-              <textarea className="dsh-plannotator-textarea" value={general} aria-label={copy.overall} placeholder={copy.overallPlaceholder} onChange={event => { setGeneral(event.target.value); setConfirmApprove(false) }} />
+            <section className="dsh-plannotator-new">
+              <div className="dsh-plannotator-annotation-head"><strong>{copy.newComment}</strong></div>
+              <div className="dsh-plannotator-quote">{selection.quote}</div>
+              <label className="dsh-plannotator-visually-hidden" htmlFor={`${panelId}-comment`}>{copy.newComment}</label>
+              <textarea
+                id={`${panelId}-comment`}
+                ref={commentRef}
+                className="dsh-plannotator-textarea"
+                value={comment}
+                placeholder={copy.commentPlaceholder}
+                onChange={event => { setComment(event.target.value) }}
+                onKeyDown={event => {
+                  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') addComment()
+                  if (event.key === 'Escape') { setSelection(null); setComment('') }
+                }}
+              />
+              <div className="dsh-plannotator-mini-actions">
+                <Button size="sm" variant="ghost" onClick={() => { setSelection(null); setComment('') }}>{copy.cancel}</Button>
+                <Button size="sm" className="dsh-plannotator-blue-button" disabled={comment.trim() === ''} onClick={addComment}>{copy.add}</Button>
+              </div>
             </section>
-          </aside>
+          )}
+          {annotations.map((annotation, index) => (
+            <section className="dsh-plannotator-annotation" key={annotation.id}>
+              <div className="dsh-plannotator-annotation-head">
+                <button type="button" className="dsh-plannotator-icon-button" onClick={() => { focusAnnotation(annotation) }}>#{index + 1}</button>
+                <button
+                  type="button"
+                  className="dsh-plannotator-icon-button"
+                  aria-label={copy.delete(index + 1)}
+                  onClick={() => {
+                    setAnnotations(current => current.filter(item => item.id !== annotation.id))
+                    setConfirmApprove(false)
+                  }}
+                >×</button>
+              </div>
+              <button type="button" className="dsh-plannotator-icon-button dsh-plannotator-quote" onClick={() => { focusAnnotation(annotation) }}>{annotation.quote}</button>
+              <div className="dsh-plannotator-comment">{annotation.comment}</div>
+            </section>
+          ))}
+          {selection === null && annotations.length === 0 && <div className="dsh-plannotator-empty">{copy.selectHint}</div>}
+          <section className="dsh-plannotator-general">
+            <label className="dsh-plannotator-annotation-head" htmlFor={`${panelId}-overall`}><strong>{copy.overall}</strong></label>
+            <textarea
+              id={`${panelId}-overall`}
+              className="dsh-plannotator-textarea"
+              value={general}
+              placeholder={copy.overallPlaceholder}
+              onChange={event => { setGeneral(event.target.value); setConfirmApprove(false) }}
+            />
+          </section>
+        </section>
+      </div>
+
+      <footer className="dsh-plannotator-footer">
+        {error !== null
+          ? <div className="dsh-plannotator-status" role="alert">{error}</div>
+          : <div className="dsh-plannotator-status" role="status" aria-live="polite">{confirmApprove ? copy.discardConfirm : ''}</div>}
+        <div className="dsh-plannotator-actions">
+          <Button
+            size="sm" variant="ghost" icon={<IconEditOutline16 size={14} />}
+            disabled={busy !== null}
+            onClick={() => { settle('dismiss', () => dismissPlanReview(review)) }}
+          >{copy.discuss}</Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className={hasFeedback ? 'dsh-plannotator-blue-button' : undefined}
+            disabled={busy !== null || !hasFeedback}
+            onClick={sendFeedback}
+          >{busy === 'feedback' ? '…' : copy.send(feedbackCount)}</Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className={confirmApprove
+              ? 'dsh-plannotator-danger-button'
+              : hasFeedback ? undefined : 'dsh-plannotator-blue-button'}
+            disabled={busy !== null}
+            onClick={approve}
+          >{busy === 'approve' ? '…' : (confirmApprove ? copy.approveAnyway : copy.approve)}</Button>
         </div>
-        <footer className="dsh-plannotator-footer">
-          <div className="dsh-plannotator-status" role="status">{error ?? (confirmApprove ? copy.discardConfirm : '')}</div>
-          <div className="dsh-plannotator-actions">
-            <button type="button" className="dsh-plannotator-button" disabled={busy !== null} onClick={() => { settle('dismiss', () => dismissPlanReview(review)) }}>{copy.discuss}</button>
-            <button type="button" className="dsh-plannotator-button dsh-plannotator-button-warn" disabled={busy !== null || !hasFeedback} onClick={sendFeedback}>{busy === 'feedback' ? '…' : copy.send(annotations.length + (general.trim() === '' ? 0 : 1))}</button>
-            <button type="button" className="dsh-plannotator-button dsh-plannotator-button-primary" disabled={busy !== null} onClick={approve}>{busy === 'approve' ? '…' : (confirmApprove ? copy.approveAnyway : copy.approve)}</button>
-          </div>
-        </footer>
-      </section>
-    </div>
+      </footer>
+    </aside>
+  ) : (
+    <button
+      type="button"
+      className="dsh-plannotator-rail-button"
+      aria-label={copy.open}
+      aria-controls={panelId}
+      aria-expanded="false"
+      onClick={openPanel}
+    >
+      <IconChevronLeftOutline14 />
+      <span>{copy.reopen}</span>
+      {annotations.length > 0 && <strong>{annotations.length}</strong>}
+    </button>
+  )
+
+  return (
+    <>
+      <div className="dsh-plannotator-launcher" data-plan-review-key={matched.key} data-dsh-plannotator-launcher="">
+        <span className="dsh-plannotator-dot" />
+        <div className="dsh-plannotator-launcher-copy">
+          <strong>{copy.ready}</strong>
+          <span>{copy.readyHint}</span>
+        </div>
+        <button
+          type="button"
+          ref={launcherRef}
+          className="dsh-plannotator-blue-button"
+          aria-controls={panelId}
+          aria-expanded={panelOpen}
+          onClick={openPanel}
+        >{copy.open}</button>
+      </div>
+      {createPortal(panel, document.body)}
+    </>
   )
 }

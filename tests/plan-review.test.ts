@@ -8,6 +8,7 @@ import {
   type PlanAnnotation,
 } from '../src/client/feedback.ts'
 import type { QuestionWait } from '../src/client/contracts.ts'
+import { en, zh } from '../src/client/locales.ts'
 
 function wait(overrides: Partial<QuestionWait['payload']['questions'][number]> = {}) {
   const calls: unknown[] = []
@@ -86,4 +87,13 @@ test('rejects malformed and stale browser drafts', () => {
     parseStoredDraft(JSON.stringify({ revision, annotations: [], general: 'Looks good' }), revision),
     { revision, annotations: [], general: 'Looks good' },
   )
+})
+
+test('keeps the English and Chinese review surfaces in lockstep', () => {
+  assert.deepEqual(Object.keys(zh).sort(), Object.keys(en).sort())
+  for (const [key, value] of Object.entries(zh)) {
+    assert.notEqual(value.trim(), '', `${key} must have Chinese copy`)
+  }
+  assert.match(en.readyHint, /exact plan text/)
+  assert.match(zh.readyHint, /计划原文/)
 })

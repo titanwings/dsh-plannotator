@@ -11,6 +11,7 @@ const program = ts.createProgram({
     'src/index.ts',
     'src/client/index.ts',
     'src/client/contracts.ts',
+    'src/client/locales.ts',
     'src/client/feedback.ts',
     'src/client/plan-review.ts',
     'src/client/selection.ts',
@@ -67,6 +68,7 @@ await build({
   external: [
     'react',
     'react/jsx-runtime',
+    'react-dom',
     '@deepseek-ai/dsh-client-ui-primitives',
   ],
   define: {

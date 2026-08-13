@@ -1,4 +1,7 @@
 import type { ComponentType } from 'react'
+import type { PlannotatorKey } from './locales.js'
+
+export type Translate = (key: PlannotatorKey, params?: Record<string, unknown>) => string
 
 export interface QuestionOption {
   readonly label: string
@@ -48,16 +51,23 @@ export interface ComposerChainProps {
 export interface SlotRegistrationOptions {
   readonly name: 'conversation.composer'
   readonly priority: number
+  readonly locale: string
   readonly select: (props: ComposerChainProps) => QuestionWait | null
 }
 
 export interface ClientContext {
   effect(factory: () => void | (() => void), label?: string): void
+  locale: {
+    register(
+      namespace: string,
+      dictionaries: { readonly zh: Record<string, string>; readonly en: Record<string, string> },
+    ): () => void
+  }
   slots: {
-    inject(name: 'conversation.composer', register: () => void): void
+    inject(name: 'conversation.composer', register: () => void | (() => void)): void
     register(
       options: SlotRegistrationOptions,
-      component: ComponentType<{ readonly matched: QuestionWait }>,
+      component: ComponentType<{ readonly matched: QuestionWait; readonly t: Translate }>,
     ): () => void
   }
 }

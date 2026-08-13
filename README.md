@@ -8,7 +8,7 @@ Select exact plan text, attach precise comments, and return one structured
 review to the agent—without leaving DeepSeek Harness.
 
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek_Harness-Web-111827)](https://github.com/dsh2026/test-titanwings)
-[![Plan Review](https://img.shields.io/badge/workflow-Plan_Review-F59E0B)](#features)
+[![Plan Review](https://img.shields.io/badge/workflow-Plan_Review-4D6BFE)](#features)
 [![MIT License](https://img.shields.io/badge/license-MIT-2563EB)](LICENSE)
 
 **English** · [简体中文](README.zh-CN.md)
@@ -17,7 +17,7 @@ review to the agent—without leaving DeepSeek Harness.
 
 </div>
 
-![A real multi-comment plan review inside DeepSeek Harness](docs/03-multi-comment-review-zh.png)
+![A real plan review in a collapsible right-side panel inside DeepSeek Harness](docs/01-sidebar-open-en.png)
 
 > “Change the third step” is vague. A comment attached to the exact sentence
 > preserves the context the agent needs to revise the plan correctly.
@@ -31,10 +31,12 @@ decision is too coarse for serious work. Architecture migrations, API changes,
 security fixes, and rollout plans often need several independent corrections
 before implementation begins.
 
-`dsh-plannotator` turns DSH's native Plan Review into a focused annotation
-workspace. Your comments stay attached to the plan statements they refer to,
-then travel back through DSH's existing response flow as structured Markdown.
-The agent stays in plan mode, revises the proposal, and asks for review again.
+`dsh-plannotator` turns DSH's native Plan Review into a compact gate plus a
+collapsible right-side review panel. The composer stays small while the full
+review remains one click away; collapse it to a slim edge rail whenever you
+need the conversation back. Your comments travel through DSH's existing
+response flow as structured Markdown, so the agent can revise the proposal in
+plan mode and ask for review again.
 
 This is an unofficial integration inspired by
 [Plannotator](https://github.com/backnotprop/plannotator).
@@ -47,16 +49,24 @@ Drag over text for a precise annotation, or double-click a paragraph, list
 item, heading, bold phrase, or code fragment. The review keeps the quote and
 comment together within the current plan revision.
 
-![Writing a precise annotation on the token migration step](docs/02-precise-comment-zh.png)
+![Writing a precise annotation in the right-side review panel](docs/02-precise-annotation-en.png)
 
 ### Review the whole plan in one pass
 
 Collect multiple comments across compatibility, security, rollback, and tests;
-add overall feedback; jump between annotations from the sidebar; then send one
-coherent review. This is much faster and less ambiguous than a sequence of chat
-messages.
+add overall feedback; click an annotation in the review panel to return to its
+source; then send one coherent review. This is much faster and less ambiguous
+than a sequence of chat messages.
 
-![Three anchored comments and overall feedback in one review](docs/03-multi-comment-review-zh.png)
+![Three anchored comments and overall feedback in one review](docs/03-multi-comment-sidebar-en.png)
+
+### Collapse the review without losing your place
+
+The review panel can shrink to a blue edge rail while the compact composer gate
+remains visible. Reopen either control to continue with the same comments and
+overall feedback.
+
+![The review collapsed to an edge rail while the conversation remains usable](docs/04-collapsed-rail-en.png)
 
 ### Return actionable feedback to the agent
 
@@ -65,8 +75,6 @@ quoted plan text, each requested change, and the overall feedback in the tool
 result and Session Log. The agent remains in plan mode and can immediately
 produce a revised proposal.
 
-![Structured feedback returned to the agent before it revises the plan](docs/05-feedback-round-trip-zh.png)
-
 ### Protect unfinished reviews
 
 Unsent comments are saved locally in the browser, isolated by Session, pending
@@ -74,12 +82,13 @@ request, and plan revision. If you try to approve while feedback is still
 pending, the plugin requires an explicit second confirmation instead of
 silently discarding your work.
 
-![Approval requires confirmation when comments have not been sent](docs/04-safe-approval-zh.png)
+![Approval requires confirmation when comments have not been sent](docs/05-safe-approval-en.png)
 
 | Capability | What you get |
 | --- | --- |
 | Precise annotations | Text selection plus a reliable double-click block fallback |
-| Multi-comment review | Anchored comments, sidebar navigation, deletion, and overall feedback |
+| Multi-comment review | Anchored comments, source navigation, deletion, and overall feedback |
+| Compact right panel | A small composer gate, collapsible review panel, and edge-rail reopen control |
 | Native DSH loop | Approve, request changes, or return to chat through the existing pending interaction |
 | Draft recovery | Best-effort local recovery without a plugin server or third-party service |
 | Review safeguards | Stale-plan draft rejection and explicit confirmation before discarding feedback |
@@ -102,11 +111,14 @@ before the first edit:
 ## How it works
 
 1. Ask the coding agent to create a plan in DSH Plan mode.
-2. When `exit_plan_mode` opens Plan Review, select the exact text that needs work.
-3. Add as many targeted comments as necessary, plus optional overall feedback.
-4. Choose **Send feedback**. The agent receives one structured review and stays
+2. When `exit_plan_mode` reaches Plan Review, DSH shows a compact gate and opens
+   the right-side review panel on desktop.
+3. Select the exact text that needs work. Collapse and reopen the panel at any
+   time without settling the review.
+4. Add as many targeted comments as necessary, plus optional overall feedback.
+5. Choose **Send feedback**. The agent receives one structured review and stays
    in plan mode.
-5. Review the revision and choose **Approve** when it is ready to implement.
+6. Review the revision and choose **Approve** when it is ready to implement.
 
 **Chat about it** dismisses the gate and returns to the ordinary composer.
 Removing the plugin restores DSH's built-in Plan Review automatically.
@@ -149,6 +161,9 @@ Restart `dsh web` after changing the installed Client plugin set.
   PR publisher, file tree, or the full standalone Plannotator SPA.
 - Drafts live in the current browser's local storage. They are not cloud-synced
   and are intentionally rejected when the plan revision changes.
+- The desktop review is a non-modal right-side drawer. It does not claim DSH's
+  core-owned `details` slot, scrape host DOM, or rewrite the AppFrame grid; on
+  small screens it becomes a compact bottom sheet.
 - No custom Host route, third-party service, or telemetry is used. Feedback
   travels through DSH's existing response channel.
 
@@ -156,9 +171,11 @@ Restart `dsh web` after changing the installed Client plugin set.
 <summary>How it fits DSH's Cordis architecture</summary>
 
 The bundle inserts one Cordis Loader row. Its Host entry is deliberately a
-no-op; `package.json#dsh.client` exposes the Web bundle. The Client registers a
-`conversation.composer` chain entry at priority `-10`, ahead of the default
-question renderer, and selects only Plan Review requests.
+no-op; `package.json#dsh.client` exposes the Web bundle. The Client registers
+its locale namespace and a `conversation.composer` chain entry at priority
+`-10`, ahead of the default question renderer, and selects only Plan Review
+requests. That contribution renders the compact gate and a React portal for the
+non-modal right-side review panel.
 
 There is no DSH core patch, parallel agent loop, duplicate persistence layer,
 or custom scheduler. Unloading the Cordis row removes the slot contribution and
@@ -175,7 +192,8 @@ pnpm build
 ```
 
 The browser bundle follows DSH's `window.__ModuleLoader__` contract and treats
-React and DSH UI primitives as platform modules, preserving one React runtime.
+React, ReactDOM, and DSH UI primitives as platform modules, preserving one React
+runtime.
 
 ## Attribution
 
