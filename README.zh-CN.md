@@ -215,12 +215,3 @@ pnpm build
 
 浏览器 bundle 遵循 DSH 的 `window.__ModuleLoader__` contract，并把 React、
 ReactDOM 与 DSH UI primitives 当作平台模块，确保页面里只有一份 React runtime。
-
----
-
-## 📜 致谢与许可
-
-本项目是非官方集成，未得到 Plannotator 维护者背书。交互模型受到 Plannotator
-启发；Plannotator 以 MIT 或 Apache-2.0 许可发布。详见
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 与
-[LICENSES/Plannotator-MIT.txt](LICENSES/Plannotator-MIT.txt)。

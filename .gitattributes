@@ -1,0 +1,2 @@
+# Runtime bundles are generated from the TypeScript sources under src/.
+lib/** linguist-generated=true

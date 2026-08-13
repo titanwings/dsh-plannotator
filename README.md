@@ -235,13 +235,3 @@ pnpm build
 The browser bundle follows DSH's `window.__ModuleLoader__` contract and treats
 React, ReactDOM, and DSH UI primitives as platform modules, preserving one React
 runtime.
-
----
-
-## 📜 Attribution
-
-This project is an unofficial integration and is not endorsed by the
-Plannotator maintainers. Its interaction model is inspired by Plannotator,
-which is available under MIT or Apache-2.0. See
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
-[LICENSES/Plannotator-MIT.txt](LICENSES/Plannotator-MIT.txt).
