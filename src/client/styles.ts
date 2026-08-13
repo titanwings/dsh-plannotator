@@ -51,9 +51,11 @@ export function installStyles(): () => void {
   if (style === null) {
     style = document.createElement('style')
     style.id = STYLE_ID
-    style.textContent = CSS_TEXT
     document.head.append(style)
   }
+  // The newest HMR bundle owns the current CSS text even while it overlaps
+  // an older refcount-aware fiber using the same node.
+  if (style.textContent !== CSS_TEXT) style.textContent = CSS_TEXT
   const owners = Number.parseInt(style.getAttribute(STYLE_OWNERS) ?? '0', 10)
   style.setAttribute(STYLE_OWNERS, String(Number.isSafeInteger(owners) ? owners + 1 : 1))
   let disposed = false

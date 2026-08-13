@@ -272,6 +272,25 @@ test('uses one stable translator across locale changes and all responsive panel 
   await React.act(async () => { view.root.unmount() })
 })
 
+test('drops a transient selection when responsive mode replaces its document surface', async () => {
+  const view = await renderReview(1480)
+  const paragraph = dom.window.document.querySelector('[data-plannotator-document] p')
+  assert.ok(paragraph)
+  await React.act(async () => {
+    paragraph.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true }))
+  })
+  assert.ok(dom.window.document.querySelector('[id$="-comment"]'))
+
+  await changeViewport(1479)
+  const openDrawer = [...dom.window.document.querySelectorAll('button')]
+    .find(button => button.textContent === 'Open review')
+  assert.ok(openDrawer)
+  await click(openDrawer)
+  assert.ok(dom.window.document.querySelector('[id$="-comment"]') === null)
+  assert.ok(dom.window.document.querySelector('.dsh-plannotator-selection-action') === null)
+  await React.act(async () => { view.root.unmount() })
+})
+
 test('creates an annotation, updates its floating action on scroll, and exposes an accessible jump action', async () => {
   const view = await renderReview()
   const paragraph = dom.window.document.querySelector('[data-plannotator-document] p')
@@ -446,6 +465,37 @@ test('keeps HMR-overlapping style owners alive until the last client fiber dispo
   assert.ok(dom.window.document.getElementById('dsh-plannotator-styles'))
   disposeSecond()
   assert.equal(dom.window.document.getElementById('dsh-plannotator-styles'), null)
+})
+
+test('refreshes CSS when a newer HMR bundle reuses a refcount-aware style node', async () => {
+  const staleStyle = dom.window.document.createElement('style')
+  staleStyle.id = 'dsh-plannotator-styles'
+  staleStyle.setAttribute('data-dsh-plannotator-style-owners', '1')
+  staleStyle.textContent = '.stale-bundle{}'
+  dom.window.document.head.append(staleStyle)
+
+  const client = await loadClientBundle()
+  const disposers: (() => void)[] = []
+  client.apply({
+    effect: (factory: () => void | (() => void)) => {
+      const dispose = factory()
+      if (typeof dispose === 'function') disposers.push(dispose)
+    },
+    locale: { register: () => () => undefined },
+    slots: {
+      inject: (_name: string, register: () => void | (() => void)) => {
+        const dispose = register()
+        if (typeof dispose === 'function') disposers.push(dispose)
+      },
+      register: () => () => undefined,
+    },
+  })
+
+  assert.equal(staleStyle.getAttribute('data-dsh-plannotator-style-owners'), '2')
+  assert.notEqual(staleStyle.textContent, '.stale-bundle{}')
+  assert.match(staleStyle.textContent ?? '', /\.dsh-plannotator-panel/)
+  for (const dispose of disposers.reverse()) dispose()
+  assert.equal(staleStyle.getAttribute('data-dsh-plannotator-style-owners'), '1')
 })
 
 test('replaces a legacy unowned style before an older fiber can remove it', async () => {

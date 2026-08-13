@@ -128,7 +128,7 @@ silently discarding your work.
 Install the GitHub bundle into the DSH Web profile, then restart `dsh web`:
 
 ```bash
-dsh plugin --profile web add github:titanwings/dsh-plannotator#v0.1.2
+dsh plugin --profile web add github:titanwings/dsh-plannotator#v0.1.3
 ```
 
 The repository ships its built Host and Web bundles, so installation runs no

@@ -1,6 +1,6 @@
 {
   "name": "@dsh-external/dsh-plannotator",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Unofficial Plannotator integration for DeepSeek Harness: annotate plans inline and return structured feedback to the waiting coding agent",
   "type": "module",
   "main": "./lib/index.js",

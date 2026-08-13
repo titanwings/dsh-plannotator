@@ -152,6 +152,7 @@ function PlannotatorReview({
   const [error, setError] = useState<string | null>(null)
   const [confirmApprove, setConfirmApprove] = useState(false)
   const mode = usePanelMode()
+  const previousMode = useRef(mode)
   const [openByMode, setOpenByMode] = useState<Record<PanelMode, boolean>>({
     docked: true,
     drawer: false,
@@ -181,6 +182,14 @@ function PlannotatorReview({
   useEffect(() => {
     if (selection !== null) commentRef.current?.focus()
   }, [selection])
+
+  useEffect(() => {
+    if (previousMode.current === mode) return
+    previousMode.current = mode
+    window.getSelection()?.removeAllRanges()
+    setSelection(null)
+    setComment('')
+  }, [mode])
 
   const openPanel = (): void => {
     setOpenByMode(current => ({ ...current, [mode]: true }))
