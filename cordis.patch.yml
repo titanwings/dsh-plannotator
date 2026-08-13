@@ -1,0 +1,5 @@
+# One Loader row gives the package both faces: a no-op Host entry and the
+# browser bundle discovered through package.json#dsh.client.
+- insert:
+    - id: dsh-plannotator
+      name: '@dsh-external/dsh-plannotator'
