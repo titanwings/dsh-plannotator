@@ -28,6 +28,8 @@
 
 [English](README.md) · **简体中文**
 
+![梁小鲸正在审阅精准批注计划的 DSH Plannotator 横幅](docs/social-preview.png)
+
 </div>
 
 ---

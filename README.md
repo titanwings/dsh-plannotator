@@ -28,6 +28,8 @@ Select exact plan text, collect precise comments, and return one structured revi
 
 **English** · [简体中文](README.zh-CN.md)
 
+![DSH Plannotator social preview with Liang Xiaojing reviewing an annotated plan](docs/social-preview.png)
+
 </div>
 
 ---
