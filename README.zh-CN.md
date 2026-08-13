@@ -120,12 +120,12 @@ Plan mode，并可以立刻给出修订版方案。
 把 GitHub bundle 安装到 DSH Web profile，然后重启 `dsh web`：
 
 ```bash
-dsh plugin --profile web add github:titanwings/dsh-plannotator#v0.1.0
+dsh plugin --profile web add github:titanwings/dsh-plannotator#v0.1.1
 ```
 
-如需可重复安装，请把 `main` 换成已经审阅的 commit SHA。Git 依赖会在宿主机上
-运行自己的 `prepare`；pnpm 10+ 可能需要为 `@dsh-external/dsh-plannotator`
-添加 `allowBuilds` 配置。
+仓库已随附构建完成的 Host 与 Web bundle，因此安装时不会运行包构建脚本，
+也不需要添加 `allowBuilds`。如果需要锁定到准确源码版本，可以用已经审阅的
+commit SHA 替换 release tag。
 
 <details>
 <summary>从本地 checkout 安装</summary>

@@ -128,12 +128,12 @@ silently discarding your work.
 Install the GitHub bundle into the DSH Web profile, then restart `dsh web`:
 
 ```bash
-dsh plugin --profile web add github:titanwings/dsh-plannotator#v0.1.0
+dsh plugin --profile web add github:titanwings/dsh-plannotator#v0.1.1
 ```
 
-For a repeatable installation, replace `main` with a reviewed commit SHA.
-Git-based dependencies run their `prepare` script on the host; pnpm 10+ may
-require an `allowBuilds` entry for `@dsh-external/dsh-plannotator`.
+The repository ships its built Host and Web bundles, so installation runs no
+package build script and needs no `allowBuilds` entry. Pin a reviewed commit SHA
+instead of the release tag when you need an exact source revision.
 
 <details>
 <summary>Install from a local checkout</summary>
