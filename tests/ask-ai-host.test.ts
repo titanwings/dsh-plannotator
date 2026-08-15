@@ -29,7 +29,7 @@ test('parseAskAiRequest accepts a minimal payload and defaults history', () => {
   assert.equal('quote' in parsed.value, false)
 })
 
-test('parseAskAiRequest rejects malformed payloads with a reason', () => {
+test('parseAskAiRequest rejects malformed payloads and collects every violation', () => {
   assert.deepEqual(parseAskAiRequest(null).ok, false)
   assert.deepEqual(parseAskAiRequest(validPayload({ sessionId: '' })).ok, false)
   assert.deepEqual(parseAskAiRequest(validPayload({ plan: '  ' })).ok, false)
@@ -40,6 +40,28 @@ test('parseAskAiRequest rejects malformed payloads with a reason', () => {
   assert.deepEqual(parseAskAiRequest(validPayload({
     history: Array.from({ length: 21 }, () => ({ question: 'q', answer: 'a' })),
   })).ok, false)
+
+  const tooLong = parseAskAiRequest(validPayload({ question: 'x'.repeat(8_001) }))
+  assert.deepEqual(tooLong.ok, false)
+  if (!tooLong.ok) {
+    assert.deepEqual(tooLong.issues, [{
+      code: 'custom',
+      path: ['question'],
+      message: 'exceeds 8000 characters',
+    }])
+  }
+
+  const multiple = parseAskAiRequest(validPayload({ sessionId: '', question: ' ' }))
+  assert.deepEqual(multiple.ok, false)
+  if (!multiple.ok) {
+    assert.deepEqual(multiple.issues.map(issue => issue.path), [['sessionId'], ['question']])
+  }
+
+  const badHistory = parseAskAiRequest(validPayload({ history: [{ question: 'q', answer: '' }] }))
+  assert.deepEqual(badHistory.ok, false)
+  if (!badHistory.ok) {
+    assert.deepEqual(badHistory.issues[0]?.path, ['history', 0, 'answer'])
+  }
 })
 
 test('parseAskAiRequest truncates an over-length plan with a visible marker', () => {
@@ -158,14 +180,49 @@ function handlerFixture(options: {
 
 const signal = () => new AbortController().signal
 
-test('handler rejects unknown endpoints and malformed payloads as bad-request', async () => {
+/**
+ * Mirror of DSH's closed RPC error schema (`rpcErrorSchema` bad-request branch):
+ * bad-request REQUIRES `details.issues` to be an array; cancelled/internal only
+ * allow `details: {}`. The composed web client runs this before surfacing any
+ * response, so an invalid body would surface as a raw zod error.
+ */
+function assertSchemaValid(result: { readonly ok: false; readonly error: unknown }): void {
+  const error = result.error as { code?: unknown; message?: unknown; details?: unknown }
+  assert.equal(error.code, 'bad-request')
+  assert.equal(typeof error.message, 'string')
+  assert.ok(error.details !== null && typeof error.details === 'object')
+  const details = error.details as { issues?: unknown }
+  assert.ok(Array.isArray(details.issues), 'bad-request must carry details.issues as an array')
+  for (const issue of details.issues as readonly { code?: unknown; path?: unknown; message?: unknown }[]) {
+    assert.equal(issue.code, 'custom')
+    assert.ok(Array.isArray(issue.path))
+    assert.equal(typeof issue.message, 'string')
+  }
+}
+
+test('handler rejects unknown endpoints and malformed payloads as schema-valid bad-request', async () => {
   const { handler } = handlerFixture({})
   const endpoint = await handler('nope', validPayload(), signal())
   assert.equal(endpoint.ok, false)
-  if (!endpoint.ok) assert.equal(endpoint.error.code, 'bad-request')
-  const payload = await handler('ask', { nope: true }, signal())
-  assert.equal(payload.ok, false)
-  if (!payload.ok) assert.equal(payload.error.code, 'bad-request')
+  if (!endpoint.ok) assertSchemaValid(endpoint)
+
+  const blank = await handler('ask', validPayload({ question: '  ' }), signal())
+  assert.equal(blank.ok, false)
+  if (!blank.ok) {
+    assertSchemaValid(blank)
+    assert.deepEqual(blank.error.details.issues[0]?.path, ['question'])
+  }
+
+  const tooLong = await handler('ask', validPayload({ question: 'x'.repeat(8_001) }), signal())
+  assert.equal(tooLong.ok, false)
+  if (!tooLong.ok) {
+    assertSchemaValid(tooLong)
+    assert.match(tooLong.error.message, /exceeds 8000 characters/)
+  }
+
+  const notObject = await handler('ask', { nope: true }, signal())
+  assert.equal(notObject.ok, false)
+  if (!notObject.ok) assertSchemaValid(notObject)
 })
 
 test('handler fails loud when the subagent capability or the live agent is absent', async () => {

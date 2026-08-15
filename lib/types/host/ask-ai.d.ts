@@ -34,13 +34,26 @@ export interface AskAiRequest {
 export interface AskAiAnswer {
     readonly answer: string;
 }
+/** One validation problem, shaped like a zod issue (`z.custom` accepts any element). */
+export interface ZodIssueLike {
+    readonly code: 'custom';
+    readonly path: readonly (string | number)[];
+    readonly message: string;
+}
 export interface RpcFailure {
     readonly ok: false;
-    readonly error: {
-        /** Closed DSH RPC taxonomy; the client envelope parser rejects anything else. */
-        readonly code: 'bad-request' | 'cancelled' | 'internal';
+    readonly error: 
+    /** DSH's closed RPC taxonomy: bad-request REQUIRES `details.issues`; only cancelled/internal allow `{}`. */
+    {
+        readonly code: 'bad-request';
         readonly message: string;
-        readonly details: Record<string, unknown>;
+        readonly details: {
+            readonly issues: readonly ZodIssueLike[];
+        };
+    } | {
+        readonly code: 'cancelled' | 'internal';
+        readonly message: string;
+        readonly details: Record<string, never>;
     };
 }
 export type AskAiRpcResult = {
@@ -106,9 +119,12 @@ type ParseResult = {
     readonly value: AskAiRequest;
 } | {
     readonly ok: false;
-    readonly message: string;
+    readonly issues: readonly ZodIssueLike[];
 };
-/** Validate and bound the wire payload; over-length plans are truncated with a visible marker. */
+/**
+ * Validate and bound the wire payload, collecting every violation so the
+ * client can show them all; over-length plans are truncated with a marker.
+ */
 export declare function parseAskAiRequest(payload: unknown): ParseResult;
 /**
  * Assemble the single user message of the one-shot child. With `parentContext`

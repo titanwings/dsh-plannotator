@@ -48,14 +48,19 @@ export interface AskAiAnswer {
   readonly answer: string
 }
 
+/** One validation problem, shaped like a zod issue (`z.custom` accepts any element). */
+export interface ZodIssueLike {
+  readonly code: 'custom'
+  readonly path: readonly (string | number)[]
+  readonly message: string
+}
+
 export interface RpcFailure {
   readonly ok: false
-  readonly error: {
-    /** Closed DSH RPC taxonomy; the client envelope parser rejects anything else. */
-    readonly code: 'bad-request' | 'cancelled' | 'internal'
-    readonly message: string
-    readonly details: Record<string, unknown>
-  }
+  readonly error:
+    /** DSH's closed RPC taxonomy: bad-request REQUIRES `details.issues`; only cancelled/internal allow `{}`. */
+    | { readonly code: 'bad-request'; readonly message: string; readonly details: { readonly issues: readonly ZodIssueLike[] } }
+    | { readonly code: 'cancelled' | 'internal'; readonly message: string; readonly details: Record<string, never> }
 }
 
 export type AskAiRpcResult = { readonly ok: true; readonly value: AskAiAnswer } | RpcFailure
@@ -125,79 +130,103 @@ export interface HostContext {
   readonly connection: ConnectionLike
 }
 
-function failure(code: RpcFailure['error']['code'], message: string): RpcFailure {
+function failure(code: 'cancelled' | 'internal', message: string): RpcFailure {
   return { ok: false, error: { code, message, details: {} } }
+}
+
+function badRequest(message: string, issues: readonly ZodIssueLike[]): RpcFailure {
+  return { ok: false, error: { code: 'bad-request', message, details: { issues } } }
 }
 
 function messageOf(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause)
 }
 
-type ParseResult = { readonly ok: true; readonly value: AskAiRequest } | { readonly ok: false; readonly message: string }
+type ParseResult = { readonly ok: true; readonly value: AskAiRequest } | { readonly ok: false; readonly issues: readonly ZodIssueLike[] }
 
-function parseHistoryEntry(value: unknown, index: number): { readonly entry: AskAiHistoryEntry } | { readonly message: string } {
-  if (value === null || typeof value !== 'object') return { message: `history[${index}] must be an object` }
+function parseHistoryEntry(value: unknown, index: number): { readonly entry: AskAiHistoryEntry } | { readonly issue: ZodIssueLike } {
+  const path = ['history', index] as const
+  if (value === null || typeof value !== 'object') {
+    return { issue: { code: 'custom', path, message: `history[${index}] must be an object` } }
+  }
   const candidate = value as Partial<AskAiHistoryEntry>
   if (typeof candidate.question !== 'string' || candidate.question.trim() === '') {
-    return { message: `history[${index}].question must be a non-empty string` }
+    return { issue: { code: 'custom', path: [...path, 'question'], message: 'must be a non-empty string' } }
   }
   if (candidate.question.length > MAX_HISTORY_QUESTION_CHARS) {
-    return { message: `history[${index}].question exceeds ${MAX_HISTORY_QUESTION_CHARS} characters` }
+    return { issue: { code: 'custom', path: [...path, 'question'], message: `exceeds ${MAX_HISTORY_QUESTION_CHARS} characters` } }
   }
   if (typeof candidate.answer !== 'string' || candidate.answer === '') {
-    return { message: `history[${index}].answer must be a non-empty string` }
+    return { issue: { code: 'custom', path: [...path, 'answer'], message: 'must be a non-empty string' } }
   }
   if (candidate.answer.length > MAX_HISTORY_ANSWER_CHARS) {
-    return { message: `history[${index}].answer exceeds ${MAX_HISTORY_ANSWER_CHARS} characters` }
+    return { issue: { code: 'custom', path: [...path, 'answer'], message: `exceeds ${MAX_HISTORY_ANSWER_CHARS} characters` } }
   }
   return { entry: { question: candidate.question, answer: candidate.answer } }
 }
 
-/** Validate and bound the wire payload; over-length plans are truncated with a visible marker. */
+/**
+ * Validate and bound the wire payload, collecting every violation so the
+ * client can show them all; over-length plans are truncated with a marker.
+ */
 export function parseAskAiRequest(payload: unknown): ParseResult {
-  if (payload === null || typeof payload !== 'object') return { ok: false, message: 'payload must be an object' }
+  const issues: ZodIssueLike[] = []
+  const push = (path: readonly (string | number)[], message: string): void => {
+    issues.push({ code: 'custom', path, message })
+  }
+  const requireString = (value: unknown, path: readonly (string | number)[], message: string): string | undefined => {
+    if (typeof value !== 'string' || value.trim() === '') {
+      push(path, message)
+      return undefined
+    }
+    return value
+  }
+  if (payload === null || typeof payload !== 'object') {
+    push([], 'payload must be an object')
+    return { ok: false, issues }
+  }
   const candidate = payload as Record<string, unknown>
-  if (typeof candidate.sessionId !== 'string' || candidate.sessionId === '') {
-    return { ok: false, message: 'sessionId must be a non-empty string' }
+  const sessionId = requireString(candidate.sessionId, ['sessionId'], 'must be a non-empty string')
+  const plan = requireString(candidate.plan, ['plan'], 'must be a non-empty string')
+  const question = requireString(candidate.question, ['question'], 'must be a non-empty string')
+  if (question !== undefined && question.length > MAX_QUESTION_CHARS) {
+    push(['question'], `exceeds ${MAX_QUESTION_CHARS} characters`)
   }
-  if (typeof candidate.plan !== 'string' || candidate.plan.trim() === '') {
-    return { ok: false, message: 'plan must be a non-empty string' }
-  }
-  if (typeof candidate.question !== 'string' || candidate.question.trim() === '') {
-    return { ok: false, message: 'question must be a non-empty string' }
-  }
-  if (candidate.question.length > MAX_QUESTION_CHARS) {
-    return { ok: false, message: `question exceeds ${MAX_QUESTION_CHARS} characters` }
-  }
-  if (candidate.quote !== undefined && (typeof candidate.quote !== 'string' || candidate.quote.trim() === '')) {
-    return { ok: false, message: 'quote must be a non-empty string when present' }
-  }
-  if (typeof candidate.quote === 'string' && candidate.quote.length > MAX_QUOTE_CHARS) {
-    return { ok: false, message: `quote exceeds ${MAX_QUOTE_CHARS} characters` }
+  const quote = candidate.quote === undefined
+    ? undefined
+    : requireString(candidate.quote, ['quote'], 'must be a non-empty string when present')
+  if (quote !== undefined && quote.length > MAX_QUOTE_CHARS) {
+    push(['quote'], `exceeds ${MAX_QUOTE_CHARS} characters`)
   }
   if (candidate.history !== undefined && !Array.isArray(candidate.history)) {
-    return { ok: false, message: 'history must be an array when present' }
+    push(['history'], 'must be an array when present')
   }
   const rawHistory = (candidate.history ?? []) as unknown[]
   if (rawHistory.length > MAX_HISTORY_ENTRIES) {
-    return { ok: false, message: `history exceeds ${MAX_HISTORY_ENTRIES} entries` }
+    push(['history'], `exceeds ${MAX_HISTORY_ENTRIES} entries`)
   }
   const history: AskAiHistoryEntry[] = []
   for (const [index, item] of rawHistory.entries()) {
     const parsed = parseHistoryEntry(item, index)
-    if ('message' in parsed) return { ok: false, message: parsed.message }
-    history.push(parsed.entry)
+    if ('issue' in parsed) {
+      issues.push(parsed.issue)
+    } else {
+      history.push(parsed.entry)
+    }
   }
-  const plan = candidate.plan.length <= MAX_PLAN_CHARS
-    ? candidate.plan
-    : `${candidate.plan.slice(0, MAX_PLAN_CHARS)}\n\n[... plan truncated for length ...]`
+  if (issues.length > 0 || sessionId === undefined || plan === undefined || question === undefined) {
+    return { ok: false, issues }
+  }
+  const boundedPlan = plan.length <= MAX_PLAN_CHARS
+    ? plan
+    : `${plan.slice(0, MAX_PLAN_CHARS)}\n\n[... plan truncated for length ...]`
   return {
     ok: true,
     value: {
-      sessionId: candidate.sessionId,
-      plan,
-      question: candidate.question.trim(),
-      ...(typeof candidate.quote === 'string' ? { quote: candidate.quote } : {}),
+      sessionId,
+      plan: boundedPlan,
+      question: question.trim(),
+      ...(quote !== undefined ? { quote } : {}),
       history,
     },
   }
@@ -265,10 +294,12 @@ function answerText(output: readonly { readonly type: string; readonly text?: st
 export function createAskAiHandler(ctx: HostContext) {
   return async (endpoint: string, payload: unknown, signal: AbortSignal): Promise<AskAiRpcResult> => {
     if (endpoint !== ASK_AI_ENDPOINT) {
-      return failure('bad-request', `unknown endpoint ${JSON.stringify(endpoint)} on ${ASK_AI_CHANNEL}`)
+      return badRequest(`unknown endpoint ${JSON.stringify(endpoint)} on ${ASK_AI_CHANNEL}`, [
+        { code: 'custom', path: [], message: `unknown endpoint ${JSON.stringify(endpoint)} on ${ASK_AI_CHANNEL}` },
+      ])
     }
     const parsed = parseAskAiRequest(payload)
-    if (!parsed.ok) return failure('bad-request', parsed.message)
+    if (!parsed.ok) return badRequest(parsed.issues[0]?.message ?? 'invalid request payload', parsed.issues)
     const request = parsed.value
 
     const agents = ctx.get('agents') as AgentsLike | undefined

@@ -43,7 +43,7 @@ test('asks through the composed connection service and unwraps the answer', asyn
 
 test('maps a host error branch to AskAiError and cancelled to AbortError', async () => {
   setAskAiConnection({
-    rpc: { call: async () => ({ ok: false, error: { code: 'internal', message: 'session gone' } }) },
+    rpc: { call: async () => ({ ok: false, error: { code: 'internal', message: 'session gone', details: {} } }) },
   })
   await assert.rejects(callAskAi(request, signal()), (cause: unknown) => {
     assert.ok(cause instanceof AskAiError)
@@ -53,9 +53,64 @@ test('maps a host error branch to AskAiError and cancelled to AbortError', async
   })
 
   setAskAiConnection({
-    rpc: { call: async () => ({ ok: false, error: { code: 'cancelled', message: 'cancelled' } }) },
+    rpc: { call: async () => ({ ok: false, error: { code: 'cancelled', message: 'cancelled', details: {} } }) },
   })
   await assert.rejects(callAskAi(request, signal()), (cause: unknown) => {
+    assert.ok(cause instanceof DOMException)
+    assert.equal(cause.name, 'AbortError')
+    return true
+  })
+})
+
+test('surfaces a schema-valid bad-request as a friendly AskAiError', async () => {
+  setAskAiConnection({
+    rpc: {
+      call: async () => ({
+        ok: false,
+        error: {
+          code: 'bad-request',
+          message: 'exceeds 8000 characters',
+          details: { issues: [{ code: 'custom', path: ['question'], message: 'exceeds 8000 characters' }] },
+        },
+      }),
+    },
+  })
+  await assert.rejects(callAskAi(request, signal()), (cause: unknown) => {
+    assert.ok(cause instanceof AskAiError)
+    assert.equal(cause.code, 'bad-request')
+    assert.match(cause.message, /exceeds 8000 characters/)
+    return true
+  })
+})
+
+test('never leaks the composed client\'s raw zod error and preserves abort', async () => {
+  setAskAiConnection({
+    rpc: {
+      call: async () => {
+        throw Object.assign(new Error('ZodError: [{"code":"invalid_type",...}]'), { name: 'ZodError' })
+      },
+    },
+  })
+  await assert.rejects(callAskAi(request, signal()), (cause: unknown) => {
+    assert.ok(cause instanceof AskAiError)
+    assert.equal(cause.code, 'internal')
+    assert.match(cause.message, /invalid response/)
+    assert.doesNotMatch(cause.message, /ZodError/)
+    return true
+  })
+
+  setAskAiConnection({
+    rpc: {
+      call: async (_channel: string, _endpoint: string, _payload: unknown, callSignal?: AbortSignal) =>
+        new Promise((_resolve, reject) => {
+          callSignal?.addEventListener('abort', () => { reject(new DOMException('aborted', 'AbortError')) })
+        }),
+    },
+  })
+  const controller = new AbortController()
+  const pending = callAskAi(request, controller.signal)
+  controller.abort()
+  await assert.rejects(pending, (cause: unknown) => {
     assert.ok(cause instanceof DOMException)
     assert.equal(cause.name, 'AbortError')
     return true

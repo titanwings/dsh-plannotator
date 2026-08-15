@@ -81,8 +81,16 @@ async function callViaConnection(
   request: AskAiRequest,
   signal: AbortSignal,
 ): Promise<string> {
-  const result = await connection.rpc.call(CHANNEL, ENDPOINT, request, signal)
-  return unwrap(result)
+  try {
+    return unwrap(await connection.rpc.call(CHANNEL, ENDPOINT, request, signal))
+  } catch (cause: unknown) {
+    // The composed client deep-validates the envelope and throws its raw zod
+    // error on any schema violation; never leak that dump to the user.
+    if (cause instanceof Error && cause.name === 'ZodError') {
+      throw new AskAiError('the plan Q&A service returned an invalid response', 'internal')
+    }
+    throw cause
+  }
 }
 
 // Set by the plugin's apply (per browser bundle instance); tests drive the
