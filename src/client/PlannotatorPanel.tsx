@@ -23,6 +23,14 @@ import {
 } from './selection.js'
 import { panelModeForWidth, type PanelMode } from './layout.js'
 
+// Payload budgets aligned with the Host ask endpoint (MAX_QUESTION_CHARS,
+// MAX_QUOTE_CHARS, MAX_HISTORY_ANSWER_CHARS): the Host rejects over-long
+// values, so the client slices before sending — otherwise an over-long quote
+// or question would fail once and then keep failing on every Retry.
+const ASK_QUESTION_MAX_CHARS = 8_000
+const ASK_QUOTE_MAX_CHARS = 8_000
+const ASK_ANSWER_MAX_CHARS = 32_000
+
 interface Copy {
   header: string
   ready: string
@@ -323,20 +331,23 @@ function PlannotatorReview({
     })
   }
 
-  // History entries are revalidated host-side (question ≤ 8k, answer ≤ 32k);
-  // slice defensively so an over-long entry can never poison a follow-up.
+  // History entries are revalidated host-side; slice defensively so an
+  // over-long entry can never poison a follow-up.
   const askHistory = (excludeId?: string): { question: string; answer: string }[] =>
     askEntries
       .filter(item => item.status === 'done' && item.id !== excludeId)
-      .map(item => ({ question: item.question.slice(0, 8_000), answer: item.answer.slice(0, 32_000) }))
+      .map(item => ({
+        question: item.question.slice(0, ASK_QUESTION_MAX_CHARS),
+        answer: item.answer.slice(0, ASK_ANSWER_MAX_CHARS),
+      }))
       .slice(-20)
 
   const sendAsk = (): void => {
-    const question = askDraft.trim()
+    const question = askDraft.trim().slice(0, ASK_QUESTION_MAX_CHARS)
     if (question === '' || askAbortRef.current !== null) return
     const entry: AskEntry = {
       id: annotationId(),
-      ...askQuote !== null ? { quote: askQuote } : {},
+      ...askQuote !== null ? { quote: askQuote.slice(0, ASK_QUOTE_MAX_CHARS) } : {},
       question,
       answer: '',
       status: 'pending',
@@ -352,8 +363,8 @@ function PlannotatorReview({
     if (askAbortRef.current !== null) return
     const pending: AskEntry = {
       id: entry.id,
-      ...entry.quote !== undefined ? { quote: entry.quote } : {},
-      question: entry.question,
+      ...entry.quote !== undefined ? { quote: entry.quote.slice(0, ASK_QUOTE_MAX_CHARS) } : {},
+      question: entry.question.slice(0, ASK_QUESTION_MAX_CHARS),
       answer: '',
       status: 'pending',
     }

@@ -705,3 +705,37 @@ test('ask ai slices over-long history entries out of every follow-up payload', a
   assert.match(entry.answer, /The lazy migration keeps rollback cheap/)
   await React.act(async () => { view.root.unmount() })
 })
+
+test('ask ai slices over-long pasted questions to the host budget on send', async () => {
+  const view = await renderReview()
+  const calls: unknown[] = []
+  view.client.apply(mockApplyCtx({
+    rpc: {
+      call: async (_channel: string, _endpoint: string, payload: unknown) => {
+        calls.push(payload)
+        return { ok: true, value: { answer: 'Sliced and sent.' } }
+      },
+    },
+  }) as never)
+
+  await click(findButton('Ask AI'))
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, `q${'y'.repeat(9_000)}`) })
+  await click(findButton('Send'))
+  await flush()
+  assert.equal(calls.length, 1)
+  const first = calls[0] as { quote?: string; question: string }
+  assert.ok(first.question.length <= 8_000)
+  assert.equal(first.question.slice(0, 1), 'q')
+
+  // The sliced question is what retry would re-send; a follow-up over the same
+  // budget keeps working instead of failing forever.
+  await React.act(async () => { setTextareaValue(input, 'Why so long?') })
+  await click(findButton('Send'))
+  await flush()
+  assert.equal(calls.length, 2)
+  const second = calls[1] as { question: string }
+  assert.equal(second.question, 'Why so long?')
+  await React.act(async () => { view.root.unmount() })
+})
