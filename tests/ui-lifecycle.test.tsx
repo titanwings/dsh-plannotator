@@ -344,10 +344,12 @@ test('keeps a typed comment when the floating annotation action is clicked', asy
   const floating = dom.window.document.querySelector<HTMLElement>('.dsh-plannotator-selection-action button')
   assert.ok(floating)
   await click(floating)
-  // The floating action only directs focus to the new-comment box for the
-  // active selection; it must never wipe a typed draft.
+  // The floating action only brings the new-comment box into view and focuses
+  // it for the active selection; it must never wipe a typed draft, create an
+  // annotation, or leave the box without a visible attention cue.
   assert.equal(comment.value, 'Keep this compatibility guarantee explicit.')
   assert.ok(dom.window.document.querySelector('[id$="-comment"]'))
+  assert.ok(dom.window.document.querySelector('.dsh-plannotator-new-attention'))
   assert.equal([...dom.window.document.querySelectorAll('button')].some(button => button.textContent === '#1'), false)
   await React.act(async () => { view.root.unmount() })
 })

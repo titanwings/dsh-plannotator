@@ -167,6 +167,7 @@ function PlannotatorReview({
   const [general, setGeneral] = useState(restored?.general ?? '')
   const [selection, setSelection] = useState<SelectionAnchor | null>(null)
   const [comment, setComment] = useState('')
+  const [commentAttention, setCommentAttention] = useState(false)
   const [askDraft, setAskDraft] = useState('')
   const [askQuote, setAskQuote] = useState<string | null>(null)
   const askThread = useAskThread(matched, review.plan, copy.askCancelled)
@@ -184,6 +185,7 @@ function PlannotatorReview({
   const panelId = `dsh-plannotator-panel-${useId().replaceAll(':', '')}`
   const documentRef = useRef<HTMLDivElement>(null)
   const commentRef = useRef<HTMLTextAreaElement>(null)
+  const attentionTimer = useRef<number | null>(null)
   const launcherRef = useRef<HTMLButtonElement>(null)
   const panelTitleRef = useRef<HTMLHeadingElement>(null)
 
@@ -204,6 +206,10 @@ function PlannotatorReview({
   useEffect(() => {
     if (selection !== null) commentRef.current?.focus()
   }, [selection])
+
+  useEffect(() => () => {
+    if (attentionTimer.current !== null) window.clearTimeout(attentionTimer.current)
+  }, [])
 
   useEffect(() => {
     if (previousMode.current === mode) return
@@ -263,6 +269,19 @@ function PlannotatorReview({
 
   const onKeyUp = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.key === 'Shift' || event.shiftKey) captureSelection()
+  }
+
+  /** Bring the new-comment box for the active selection into view and focus it. */
+  const focusComment = (): void => {
+    const box = commentRef.current
+    if (box !== null) {
+      const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+      box.scrollIntoView({ block: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' })
+      box.focus()
+    }
+    setCommentAttention(true)
+    if (attentionTimer.current !== null) window.clearTimeout(attentionTimer.current)
+    attentionTimer.current = window.setTimeout(() => { setCommentAttention(false) }, 600)
   }
 
   const addComment = (): void => {
@@ -410,9 +429,10 @@ function PlannotatorReview({
             >
               {/* The annotations view is always active; keep the selection so the
                   new-comment box below stays open on the quoted text. The action
-                  only directs focus to that box — it must never clear a typed
-                  draft (clearing is the selection capture's job). */}
-              <button type="button" onClick={() => { commentRef.current?.focus() }}>
+                  only brings that box into view and focuses it — it must never
+                  clear a typed draft (clearing is the selection capture's job)
+                  nor create an annotation (that is the Add button's job). */}
+              <button type="button" onClick={focusComment}>
                 ＋ {copy.commentButton}
               </button>
               <button type="button" onClick={beginAsk}>
@@ -427,7 +447,9 @@ function PlannotatorReview({
               <span>{copy.shortcut}</span>
             </div>
             {selection !== null && (
-              <section className="dsh-plannotator-new">
+              <section className={commentAttention
+                ? 'dsh-plannotator-new dsh-plannotator-new-attention'
+                : 'dsh-plannotator-new'}>
                 <div className="dsh-plannotator-annotation-head"><strong>{copy.newComment}</strong></div>
                 <div className="dsh-plannotator-quote">{selection.quote}</div>
                 <label className="dsh-plannotator-visually-hidden" htmlFor={`${panelId}-comment`}>{copy.newComment}</label>
