@@ -56,8 +56,16 @@ export function AskAISection({
   }, [stagedQuote])
 
   useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  // Stick to the bottom only when the reader is already near it; never yank a
+  // scroll position away from earlier content when an entry updates.
+  useEffect(() => {
     const list = listRef.current
-    if (list !== null) list.scrollTop = list.scrollHeight
+    if (list === null) return
+    const nearBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 48
+    if (nearBottom) list.scrollTop = list.scrollHeight
   }, [entries])
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {

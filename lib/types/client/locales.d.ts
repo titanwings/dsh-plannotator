@@ -25,7 +25,6 @@ export declare const en: {
     readonly delete: "Delete annotation {number}";
     readonly goTo: "Go to annotation {number}";
     readonly shortcut: "Add with Ctrl/⌘ Enter";
-    readonly annotationsTab: "Annotations";
     readonly askTab: "Ask AI";
     readonly askButton: "Ask AI";
     readonly askPlaceholder: "Ask a question about this plan…";

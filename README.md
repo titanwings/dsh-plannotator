@@ -102,8 +102,9 @@ produce a revised proposal.
 
 ### Ask AI about the plan
 
-Select plan text and choose **✦ Ask AI** (or open the **Ask AI** tab directly
-for a general question). The question travels with the plan text, the quoted
+Select plan text and choose **✦ Ask AI** to stage the excerpt, or just type
+into the **Ask AI** sidebar that sits permanently to the left of the plan
+preview. The question travels with the plan text, the quoted
 excerpt, and your earlier Q&A to a one-shot subagent of the reviewed session —
 a fork that inherits the same model, workspace, **and earlier conversation
 turns** (the plan itself always rides along verbatim, since it was submitted in

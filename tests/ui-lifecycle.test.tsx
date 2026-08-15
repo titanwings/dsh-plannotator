@@ -625,7 +625,6 @@ test('ask ai stops an in-flight question and drops its pending entry', async () 
     },
   }) as never)
 
-  await click(findButton('Ask AI'))
   assert.match(dom.window.document.body.textContent ?? '', /Ask anything about this plan/)
   const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
   assert.ok(input)
@@ -657,7 +656,6 @@ test('ask ai surfaces host errors and retries the failed question', async () => 
     },
   }) as never)
 
-  await click(findButton('Ask AI'))
   const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
   assert.ok(input)
   await React.act(async () => { setTextareaValue(input, 'Is the session live?') })
@@ -689,7 +687,6 @@ test('ask ai slices over-long history entries out of every follow-up payload', a
     },
   }) as never)
 
-  await click(findButton('Ask AI'))
   const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
   assert.ok(input)
   await React.act(async () => { setTextareaValue(input, 'Why lazy?') })
@@ -724,7 +721,6 @@ test('ask ai slices over-long pasted questions to the host budget on send', asyn
     },
   }) as never)
 
-  await click(findButton('Ask AI'))
   const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
   assert.ok(input)
   await React.act(async () => { setTextareaValue(input, `q${'y'.repeat(9_000)}`) })
@@ -754,7 +750,6 @@ test('ask ai keeps a host-cancelled question visible instead of silently droppin
     },
   }) as never)
 
-  await click(findButton('Ask AI'))
   const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
   assert.ok(input)
   await React.act(async () => { setTextareaValue(input, 'Is the session alive?') })
@@ -782,7 +777,6 @@ test('ask ai survives navigating away: the answer lands after the panel remounts
   }) as never)
 
   const first = await renderWithClient(client)
-  await click(findButton('Ask AI'))
   const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
   assert.ok(input)
   await React.act(async () => { setTextareaValue(input, 'What ships first?') })
@@ -796,7 +790,6 @@ test('ask ai survives navigating away: the answer lands after the panel remounts
   assert.ok(settle, 'the request must still be in flight after unmount')
 
   const second = await renderWithClient(client)
-  await click(findButton('Ask AI'))
   assert.match(dom.window.document.body.textContent ?? '', /What ships first\?/, 'thread restored after remount')
 
   settle?.('The answer arrived after you came back.')
@@ -825,7 +818,6 @@ test('ask ai restores the thread from local storage after a reload', async () =>
       },
     },
   }) as never)
-  await click(findButton('Ask AI'))
   const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
   assert.ok(input)
   await React.act(async () => { setTextareaValue(input, 'Survives reloads?') })
@@ -851,7 +843,6 @@ test('ask ai restores the thread from local storage after a reload', async () =>
       call: async () => ({ ok: false, error: { code: 'cancelled', message: 'cancelled', details: {} } }),
     },
   }) as never)
-  await click(findButton('Ask AI'))
   await flush()
   assert.match(dom.window.document.body.textContent ?? '', /Survives reloads\?/)
   assert.match(dom.window.document.body.textContent ?? '', /Persisted answer/)
@@ -871,7 +862,6 @@ test('ask ai only clears the composer when the question is actually accepted', a
       },
     },
   }) as never)
-  await click(findButton('Ask AI'))
   const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
   assert.ok(input)
 
@@ -890,5 +880,38 @@ test('ask ai only clears the composer when the question is actually accepted', a
   await flush()
   assert.equal(calls.length, 1)
   assert.equal(input.value, '')
+  await React.act(async () => { view.root.unmount() })
+})
+
+test('ask ai is always visible to the left of the plan preview', async () => {
+  const view = await renderReview(1600)
+  const rail = dom.window.document.querySelector('.dsh-plannotator-ask-rail')
+  assert.ok(rail, 'the Ask AI rail is always rendered')
+  assert.ok(dom.window.document.querySelector('[data-plannotator-document]'), 'the plan preview stays visible')
+  assert.ok(dom.window.document.querySelector('.dsh-plannotator-ask-thread'))
+  assert.ok(dom.window.document.querySelector('[id$="-ask"]'))
+  assert.ok(dom.window.document.querySelector('[data-plan-review-panel]'))
+  // The rail precedes the plan side in the workspace row (left of the preview).
+  const workspace = dom.window.document.querySelector('.dsh-plannotator-workspace')
+  const firstChild = workspace?.firstElementChild
+  assert.equal(firstChild?.className, 'dsh-plannotator-ask-rail')
+  assert.ok(workspace?.querySelector('.dsh-plannotator-plan-side'))
+  await React.act(async () => { view.root.unmount() })
+})
+
+test('ask ai stages a selection quote into the always-visible composer', async () => {
+  const view = await renderReview(1600)
+  const paragraph = dom.window.document.querySelector('[data-plannotator-document] p')
+  assert.ok(paragraph)
+  await React.act(async () => {
+    paragraph.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true }))
+  })
+  await click(findButton('✦ Ask AI'))
+
+  assert.equal(
+    dom.window.document.querySelector('.dsh-plannotator-ask-quote-chip span')?.textContent,
+    'Ship safely and keep compatibility.',
+  )
+  assert.ok(dom.window.document.querySelector('[data-plannotator-document]'), 'the plan preview stays visible')
   await React.act(async () => { view.root.unmount() })
 })
