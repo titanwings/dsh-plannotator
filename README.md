@@ -100,6 +100,18 @@ quoted plan text, each requested change, and the overall feedback in the tool
 result and Session Log. The agent remains in plan mode and can immediately
 produce a revised proposal.
 
+### Ask AI about the plan
+
+Select plan text and choose **✦ Ask AI** (or open the **Ask AI** tab directly
+for a general question). The question travels with the plan text, the quoted
+excerpt, and your earlier Q&A to a one-shot subagent of the reviewed session —
+same model, same workspace — that can inspect the repository with read-only
+tools (`read`, `grep`, `glob`, `web_search`, `web_fetch`, probed against the
+session's actual tool set). The answer renders inline as Markdown; follow-up
+questions keep the thread's context, and **Stop** cancels a slow answer. The
+answering child never modifies files, never rewrites the plan, and cannot
+delegate further.
+
 ### Protect unfinished reviews
 
 Unsent comments are saved locally in the browser, isolated by Session, pending
@@ -115,6 +127,7 @@ silently discarding your work.
 | Multi-comment review | Anchored comments, source navigation, deletion, and overall feedback |
 | Responsive review column | Side-by-side on wide screens, an on-demand drawer on narrower desktops, and a bottom sheet on phones |
 | DSH response loop | Approve, request changes, or return to chat through the existing pending interaction |
+| Ask AI | Plan Q&A by a one-shot read-only subagent, with quoted excerpts, follow-ups, and cancellation |
 | Draft recovery | Best-effort local recovery without a plugin server or third-party service |
 | Review safeguards | Stale-plan draft rejection and explicit confirmation before discarding feedback |
 | UI fit | English and Chinese copy, keyboard shortcuts, responsive layout, and DSH theme tokens |
@@ -128,7 +141,7 @@ silently discarding your work.
 Install the GitHub bundle into the DSH Web profile, then restart `dsh web`:
 
 ```bash
-dsh plugin --profile web add github:titanwings/dsh-plannotator#v0.1.3
+dsh plugin --profile web add github:titanwings/dsh-plannotator#v0.1.4
 ```
 
 The repository ships its built Host and Web bundles, so installation runs no
@@ -203,20 +216,26 @@ must be correct before the first edit:
 - The companion panel is plugin-owned, not DSH's core `details` panel. It uses
   the stable Web `#root` mount boundary to reserve space and lets AppFrame
   reflow normally; it does not register in or rewrite the core details grid.
-- No custom Host route, third-party service, or telemetry is used. Feedback
-  travels through DSH's existing response channel.
+- The Ask AI channel is a loopback/trusted-host RPC channel (`/dsh-plannotator`)
+  on DSH's shared Connection transport. Each question runs as a one-shot
+  subagent (labelled `plan-ask`, visible in the session's subagent list) that
+  inherits the reviewed session's model and composition under a read-only tool
+  filter. Answers are unary (no streaming yet), and the Q&A thread lives only
+  in the open panel — it is not persisted like annotation drafts.
+- Feedback travels through DSH's existing response channel. No third-party
+  service or telemetry is used.
 
 <details>
 <summary>How it fits DSH's Cordis architecture</summary>
 
-The bundle inserts one Cordis Loader row. Its Host entry is deliberately a
-no-op; `package.json#dsh.client` exposes the Web bundle. The Client registers
-its locale namespace and a `conversation.composer` chain entry at priority
-`-10`, ahead of the default question renderer, and selects only Plan Review
-requests. That contribution renders the compact gate and mounts the
-plugin-owned panel through a React portal. Wide layouts reserve matching space
-at the stable Web root; narrower layouts reuse the panel as an on-demand drawer
-or bottom sheet.
+The bundle inserts one Cordis Loader row. Its Host entry registers only the
+Ask AI RPC channel on the shared Connection transport; `package.json#dsh.client`
+exposes the Web bundle. The Client registers its locale namespace and a
+`conversation.composer` chain entry at priority `-10`, ahead of the default
+question renderer, and selects only Plan Review requests. That contribution
+renders the compact gate and mounts the plugin-owned panel through a React
+portal. Wide layouts reserve matching space at the stable Web root; narrower
+layouts reuse the panel as an on-demand drawer or bottom sheet.
 
 There is no DSH core patch, parallel agent loop, duplicate persistence layer,
 or custom scheduler. Unloading the Cordis row removes the slot contribution and

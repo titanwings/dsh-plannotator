@@ -25,6 +25,16 @@ export declare const en: {
     readonly delete: "Delete annotation {number}";
     readonly goTo: "Go to annotation {number}";
     readonly shortcut: "Add with Ctrl/⌘ Enter";
+    readonly annotationsTab: "Annotations";
+    readonly askTab: "Ask AI";
+    readonly askButton: "Ask AI";
+    readonly askPlaceholder: "Ask a question about this plan…";
+    readonly askSend: "Send";
+    readonly askStop: "Stop";
+    readonly askRetry: "Retry";
+    readonly askEmpty: "Ask anything about this plan. Select plan text first to quote it.";
+    readonly askClearQuote: "Remove the quoted excerpt";
+    readonly askAnswering: "The plan Q&A agent is answering…";
 };
 export type PlannotatorKey = keyof typeof en;
 /** Chinese copy mirrors every English key; registration enforces one namespace owner. */

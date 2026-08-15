@@ -446,6 +446,7 @@ test('keeps HMR-overlapping style owners alive until the last client fiber dispo
         const dispose = factory()
         if (typeof dispose === 'function') disposers.push(dispose)
       },
+      get: () => undefined,
       locale: { register: () => () => undefined },
       slots: {
         inject: (_name: string, register: () => void | (() => void)) => {
@@ -481,6 +482,7 @@ test('refreshes CSS when a newer HMR bundle reuses a refcount-aware style node',
       const dispose = factory()
       if (typeof dispose === 'function') disposers.push(dispose)
     },
+    get: () => undefined,
     locale: { register: () => () => undefined },
     slots: {
       inject: (_name: string, register: () => void | (() => void)) => {
@@ -511,6 +513,7 @@ test('replaces a legacy unowned style before an older fiber can remove it', asyn
       const dispose = factory()
       if (typeof dispose === 'function') disposers.push(dispose)
     },
+    get: () => undefined,
     locale: { register: () => () => undefined },
     slots: {
       inject: (_name: string, register: () => void | (() => void)) => {
@@ -529,4 +532,139 @@ test('replaces a legacy unowned style before an older fiber can remove it', asyn
 
   for (const dispose of disposers.reverse()) dispose()
   assert.equal(dom.window.document.getElementById('dsh-plannotator-styles'), null)
+})
+
+// ---- Ask AI ----
+
+function mockApplyCtx(connection: unknown): unknown {
+  return {
+    effect: (factory: () => void | (() => void)) => { factory() },
+    get: (name: string) => (name === 'connection' ? connection : undefined),
+    locale: { register: () => () => undefined },
+    slots: {
+      inject: (_name: string, register: () => void | (() => void)) => { register() },
+      register: () => () => undefined,
+    },
+  }
+}
+
+function findButton(text: string): HTMLElement {
+  const button = [...dom.window.document.querySelectorAll('button')]
+    .find(candidate => candidate.textContent === text)
+  assert.ok(button, `button ${text} exists`)
+  return button as HTMLElement
+}
+
+async function flush(): Promise<void> {
+  await React.act(async () => {
+    for (let index = 0; index < 6; index += 1) await Promise.resolve()
+  })
+}
+
+test('ask ai quotes the selection, sends the question, and renders the answer', async () => {
+  const view = await renderReview()
+  const calls: { channel: string; endpoint: string; payload: unknown }[] = []
+  view.client.apply(mockApplyCtx({
+    rpc: {
+      call: async (channel: string, endpoint: string, payload: unknown) => {
+        calls.push({ channel, endpoint, payload })
+        return { ok: true, value: { answer: 'Because the API must stay stable.' } }
+      },
+    },
+  }) as never)
+
+  const paragraph = dom.window.document.querySelector('[data-plannotator-document] p')
+  assert.ok(paragraph)
+  await React.act(async () => {
+    paragraph.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true }))
+  })
+  await click(findButton('✦ Ask AI'))
+
+  const chip = dom.window.document.querySelector('.dsh-plannotator-ask-quote-chip span')
+  assert.equal(chip?.textContent, 'Ship safely and keep compatibility.')
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, 'Why keep compatibility?') })
+  await click(findButton('Send'))
+  await flush()
+
+  assert.equal(calls.length, 1)
+  const call = calls[0]
+  assert.ok(call)
+  assert.equal(call.channel, '/dsh-plannotator')
+  assert.equal(call.endpoint, 'ask')
+  // The bundle runs in the jsdom realm, so compare plain data, not object identity.
+  assert.deepEqual(JSON.parse(JSON.stringify(call.payload)), {
+    sessionId: 'session-1',
+    plan: '# Plan\n\nShip safely and keep compatibility.',
+    question: 'Why keep compatibility?',
+    quote: 'Ship safely and keep compatibility.',
+    history: [],
+  })
+  assert.match(
+    dom.window.document.querySelector('.dsh-plannotator-ask-answer')?.textContent ?? '',
+    /Because the API must stay stable/,
+  )
+  await React.act(async () => { view.root.unmount() })
+})
+
+test('ask ai stops an in-flight question and drops its pending entry', async () => {
+  const view = await renderReview()
+  view.client.apply(mockApplyCtx({
+    rpc: {
+      call: (_channel: string, _endpoint: string, _payload: unknown, signal?: AbortSignal) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener('abort', () => { reject(new DOMException('aborted', 'AbortError')) })
+        }),
+    },
+  }) as never)
+
+  await click(findButton('Ask AI'))
+  assert.match(dom.window.document.body.textContent ?? '', /Ask anything about this plan/)
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, 'What ships first?') })
+  await click(findButton('Send'))
+  assert.match(dom.window.document.body.textContent ?? '', /The plan Q&A agent is answering/)
+  assert.match(dom.window.document.body.textContent ?? '', /What ships first\?/)
+
+  await click(findButton('Stop'))
+  await flush()
+  assert.equal(dom.window.document.querySelector('.dsh-plannotator-ask-entry'), null)
+  assert.match(dom.window.document.body.textContent ?? '', /Ask anything about this plan/)
+  await React.act(async () => { view.root.unmount() })
+})
+
+test('ask ai surfaces host errors and retries the failed question', async () => {
+  const view = await renderReview()
+  const answers: ({ ok: false; error: { code: string; message: string } } | { ok: true; value: { answer: string } })[] = [
+    { ok: false, error: { code: 'internal', message: 'the reviewed session has no live agent' } },
+    { ok: true, value: { answer: 'Now it is alive.' } },
+  ]
+  const calls: unknown[] = []
+  view.client.apply(mockApplyCtx({
+    rpc: {
+      call: async (_channel: string, _endpoint: string, payload: unknown) => {
+        calls.push(payload)
+        return answers.shift()
+      },
+    },
+  }) as never)
+
+  await click(findButton('Ask AI'))
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, 'Is the session live?') })
+  await click(findButton('Send'))
+  await flush()
+  assert.match(dom.window.document.querySelector('[role="alert"]')?.textContent ?? '', /no live agent/)
+
+  await click(findButton('Retry'))
+  await flush()
+  assert.equal(calls.length, 2)
+  assert.match(
+    dom.window.document.querySelector('.dsh-plannotator-ask-answer')?.textContent ?? '',
+    /Now it is alive/,
+  )
+  await React.act(async () => { view.root.unmount() })
 })

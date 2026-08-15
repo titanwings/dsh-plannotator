@@ -7,6 +7,8 @@ import {
   Button, IconChevronLeftOutline14, IconChevronRightOutline14, IconEditOutline16, MarkdownText,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { QuestionWait, Translate } from './contracts.js'
+import { callAskAi } from './ask-ai.js'
+import { AskAISection, type AskCopy, type AskEntry } from './AskAISection.js'
 import {
   parseStoredDraft, planRevision, renderPlanFeedback,
   type PlanAnnotation,
@@ -45,6 +47,10 @@ interface Copy {
   delete: (number: number) => string
   goTo: (number: number) => string
   shortcut: string
+  annotationsTab: string
+  askTab: string
+  askButton: string
+  ask: AskCopy
 }
 
 function readPanelMode(): PanelMode {
@@ -94,6 +100,19 @@ function copyOf(t: Translate): Copy {
     delete: number => t('delete', { number }),
     goTo: number => t('goTo', { number }),
     shortcut: t('shortcut'),
+    annotationsTab: t('annotationsTab'),
+    askTab: t('askTab'),
+    askButton: t('askButton'),
+    ask: {
+      label: t('askTab'),
+      placeholder: t('askPlaceholder'),
+      send: t('askSend'),
+      stop: t('askStop'),
+      retry: t('askRetry'),
+      empty: t('askEmpty'),
+      clearQuote: t('askClearQuote'),
+      answering: t('askAnswering'),
+    },
   }
 }
 
@@ -148,6 +167,11 @@ function PlannotatorReview({
   const [general, setGeneral] = useState(restored?.general ?? '')
   const [selection, setSelection] = useState<SelectionAnchor | null>(null)
   const [comment, setComment] = useState('')
+  const [tab, setTab] = useState<'annotations' | 'ask'>('annotations')
+  const [askEntries, setAskEntries] = useState<readonly AskEntry[]>([])
+  const [askDraft, setAskDraft] = useState('')
+  const [askQuote, setAskQuote] = useState<string | null>(null)
+  const askAbortRef = useRef<AbortController | null>(null)
   const [busy, setBusy] = useState<'approve' | 'feedback' | 'dismiss' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [confirmApprove, setConfirmApprove] = useState(false)
@@ -180,8 +204,12 @@ function PlannotatorReview({
   }, [annotations, panelOpen])
 
   useEffect(() => {
-    if (selection !== null) commentRef.current?.focus()
-  }, [selection])
+    if (selection !== null && tab === 'annotations') commentRef.current?.focus()
+  }, [selection, tab])
+
+  // An in-flight question belongs to this review surface only: leaving it
+  // (approve / feedback sent / dismiss) cancels the answering subagent.
+  useEffect(() => () => { askAbortRef.current?.abort() }, [])
 
   useEffect(() => {
     if (previousMode.current === mode) return
@@ -259,6 +287,79 @@ function PlannotatorReview({
     setSelection(null)
     setComment('')
   }
+
+  /** Move the current selection into the Ask AI composer as a quoted excerpt. */
+  const beginAsk = (): void => {
+    if (selection === null) return
+    setAskQuote(selection.quote)
+    window.getSelection()?.removeAllRanges()
+    setSelection(null)
+    setComment('')
+    setTab('ask')
+  }
+
+  const launchAsk = (entry: AskEntry, history: readonly { question: string; answer: string }[]): void => {
+    const controller = new AbortController()
+    askAbortRef.current = controller
+    void callAskAi({
+      sessionId: review.wait.sessionId,
+      plan: review.plan,
+      question: entry.question,
+      ...entry.quote !== undefined ? { quote: entry.quote } : {},
+      history,
+    }, controller.signal).then(answer => {
+      setAskEntries(current => current.map(item =>
+        item.id === entry.id ? { ...item, status: 'done' as const, answer } : item))
+    }).catch((cause: unknown) => {
+      if (controller.signal.aborted || (cause instanceof DOMException && cause.name === 'AbortError')) {
+        setAskEntries(current => current.filter(item => item.id !== entry.id))
+        return
+      }
+      const message = cause instanceof Error ? cause.message : String(cause)
+      setAskEntries(current => current.map(item =>
+        item.id === entry.id ? { ...item, status: 'error' as const, error: message } : item))
+    }).finally(() => {
+      if (askAbortRef.current === controller) askAbortRef.current = null
+    })
+  }
+
+  const askHistory = (excludeId?: string): { question: string; answer: string }[] =>
+    askEntries
+      .filter(item => item.status === 'done' && item.id !== excludeId)
+      .map(item => ({ question: item.question, answer: item.answer }))
+      .slice(-20)
+
+  const sendAsk = (): void => {
+    const question = askDraft.trim()
+    if (question === '' || askAbortRef.current !== null) return
+    const entry: AskEntry = {
+      id: annotationId(),
+      ...askQuote !== null ? { quote: askQuote } : {},
+      question,
+      answer: '',
+      status: 'pending',
+    }
+    const history = askHistory()
+    setAskEntries(current => [...current, entry])
+    setAskDraft('')
+    setAskQuote(null)
+    launchAsk(entry, history)
+  }
+
+  const retryAsk = (entry: AskEntry): void => {
+    if (askAbortRef.current !== null) return
+    const pending: AskEntry = {
+      id: entry.id,
+      ...entry.quote !== undefined ? { quote: entry.quote } : {},
+      question: entry.question,
+      answer: '',
+      status: 'pending',
+    }
+    setAskEntries(current => current.map(item => (item.id === entry.id ? pending : item)))
+    launchAsk(pending, askHistory(entry.id))
+  }
+
+  const stopAsk = (): void => { askAbortRef.current?.abort() }
 
   const settle = (kind: 'approve' | 'feedback' | 'dismiss', send: () => Promise<void>): void => {
     setBusy(kind)
@@ -338,21 +439,60 @@ function PlannotatorReview({
         </div>
 
         {selection !== null && (
-          <button
-            type="button"
+          <div
             className="dsh-plannotator-selection-action"
             style={{
-              left: Math.min(window.innerWidth - 148, Math.max(8, selection.rect.left)),
+              left: Math.min(window.innerWidth - 220, Math.max(8, selection.rect.left)),
               top: Math.min(window.innerHeight - 48, selection.rect.bottom),
             }}
             onMouseDown={(event: MouseEvent) => { event.preventDefault() }}
-            onClick={() => { commentRef.current?.focus() }}
           >
-            ＋ {copy.commentButton}
-          </button>
+            <button type="button" onClick={() => { setTab('annotations') }}>
+              ＋ {copy.commentButton}
+            </button>
+            <button type="button" onClick={beginAsk}>
+              ✦ {copy.askButton}
+            </button>
+          </div>
         )}
 
         <section className="dsh-plannotator-review" aria-label={copy.annotation(annotations.length)}>
+          <div className="dsh-plannotator-tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'annotations'}
+              className={tab === 'annotations' ? 'dsh-plannotator-tab dsh-plannotator-tab-active' : 'dsh-plannotator-tab'}
+              onClick={() => { setTab('annotations') }}
+            >
+              {copy.annotationsTab}{annotations.length > 0 ? ` (${annotations.length})` : ''}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'ask'}
+              className={tab === 'ask' ? 'dsh-plannotator-tab dsh-plannotator-tab-active' : 'dsh-plannotator-tab'}
+              onClick={() => { setTab('ask') }}
+            >
+              {copy.askTab}
+            </button>
+          </div>
+          {tab === 'ask' ? (
+            <AskAISection
+              entries={askEntries}
+              draft={askDraft}
+              onDraftChange={setAskDraft}
+              stagedQuote={askQuote}
+              onClearQuote={() => { setAskQuote(null) }}
+              busy={askAbortRef.current !== null}
+              onSend={sendAsk}
+              onStop={stopAsk}
+              onRetry={retryAsk}
+              copy={copy.ask}
+              inputId={`${panelId}-ask`}
+            />
+          ) : (
+            <>
           <div className="dsh-plannotator-review-title">
             <span>{copy.annotation(annotations.length)}</span>
             <span>{copy.shortcut}</span>
@@ -414,6 +554,8 @@ function PlannotatorReview({
               onChange={event => { setGeneral(event.target.value); setConfirmApprove(false) }}
             />
           </section>
+            </>
+          )}
         </section>
       </div>
 

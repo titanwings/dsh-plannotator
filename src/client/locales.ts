@@ -25,6 +25,16 @@ export const en = {
   delete: 'Delete annotation {number}',
   goTo: 'Go to annotation {number}',
   shortcut: 'Add with Ctrl/⌘ Enter',
+  annotationsTab: 'Annotations',
+  askTab: 'Ask AI',
+  askButton: 'Ask AI',
+  askPlaceholder: 'Ask a question about this plan…',
+  askSend: 'Send',
+  askStop: 'Stop',
+  askRetry: 'Retry',
+  askEmpty: 'Ask anything about this plan. Select plan text first to quote it.',
+  askClearQuote: 'Remove the quoted excerpt',
+  askAnswering: 'The plan Q&A agent is answering…',
 } as const
 
 export type PlannotatorKey = keyof typeof en
@@ -56,4 +66,14 @@ export const zh: Record<PlannotatorKey, string> = {
   delete: '删除第 {number} 条批注',
   goTo: '跳转到第 {number} 条批注',
   shortcut: 'Ctrl/⌘ Enter 添加',
+  annotationsTab: '批注',
+  askTab: '问 AI',
+  askButton: '问 AI',
+  askPlaceholder: '就这份计划提问…',
+  askSend: '发送',
+  askStop: '停止',
+  askRetry: '重试',
+  askEmpty: '关于这份计划的任何问题都可以问；先选中计划原文即可引用。',
+  askClearQuote: '移除引用的摘录',
+  askAnswering: '计划问答 Agent 正在回答…',
 }
