@@ -7,8 +7,8 @@ import {
   Button, IconChevronLeftOutline14, IconChevronRightOutline14, IconEditOutline16, MarkdownText,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { QuestionWait, Translate } from './contracts.js'
-import { callAskAi } from './ask-ai.js'
 import { AskAISection, type AskCopy, type AskEntry } from './AskAISection.js'
+import { useAskThread } from './ask-thread.js'
 import {
   parseStoredDraft, planRevision, renderPlanFeedback,
   type PlanAnnotation,
@@ -22,14 +22,6 @@ import {
   type SelectionAnchor,
 } from './selection.js'
 import { panelModeForWidth, type PanelMode } from './layout.js'
-
-// Payload budgets aligned with the Host ask endpoint (MAX_QUESTION_CHARS,
-// MAX_QUOTE_CHARS, MAX_HISTORY_ANSWER_CHARS): the Host rejects over-long
-// values, so the client slices before sending — otherwise an over-long quote
-// or question would fail once and then keep failing on every Retry.
-const ASK_QUESTION_MAX_CHARS = 8_000
-const ASK_QUOTE_MAX_CHARS = 8_000
-const ASK_ANSWER_MAX_CHARS = 32_000
 
 interface Copy {
   header: string
@@ -58,6 +50,7 @@ interface Copy {
   annotationsTab: string
   askTab: string
   askButton: string
+  askCancelled: string
   ask: AskCopy
 }
 
@@ -111,6 +104,7 @@ function copyOf(t: Translate): Copy {
     annotationsTab: t('annotationsTab'),
     askTab: t('askTab'),
     askButton: t('askButton'),
+    askCancelled: t('askCancelled'),
     ask: {
       label: t('askTab'),
       placeholder: t('askPlaceholder'),
@@ -176,10 +170,9 @@ function PlannotatorReview({
   const [selection, setSelection] = useState<SelectionAnchor | null>(null)
   const [comment, setComment] = useState('')
   const [tab, setTab] = useState<'annotations' | 'ask'>('annotations')
-  const [askEntries, setAskEntries] = useState<readonly AskEntry[]>([])
   const [askDraft, setAskDraft] = useState('')
   const [askQuote, setAskQuote] = useState<string | null>(null)
-  const askAbortRef = useRef<AbortController | null>(null)
+  const askThread = useAskThread(matched, review.plan, copy.askCancelled)
   const [busy, setBusy] = useState<'approve' | 'feedback' | 'dismiss' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [confirmApprove, setConfirmApprove] = useState(false)
@@ -214,10 +207,6 @@ function PlannotatorReview({
   useEffect(() => {
     if (selection !== null && tab === 'annotations') commentRef.current?.focus()
   }, [selection, tab])
-
-  // An in-flight question belongs to this review surface only: leaving it
-  // (approve / feedback sent / dismiss) cancels the answering subagent.
-  useEffect(() => () => { askAbortRef.current?.abort() }, [])
 
   useEffect(() => {
     if (previousMode.current === mode) return
@@ -306,73 +295,15 @@ function PlannotatorReview({
     setTab('ask')
   }
 
-  const launchAsk = (entry: AskEntry, history: readonly { question: string; answer: string }[]): void => {
-    const controller = new AbortController()
-    askAbortRef.current = controller
-    void callAskAi({
-      sessionId: review.wait.sessionId,
-      plan: review.plan,
-      question: entry.question,
-      ...entry.quote !== undefined ? { quote: entry.quote } : {},
-      history,
-    }, controller.signal).then(answer => {
-      setAskEntries(current => current.map(item =>
-        item.id === entry.id ? { ...item, status: 'done' as const, answer } : item))
-    }).catch((cause: unknown) => {
-      if (controller.signal.aborted || (cause instanceof DOMException && cause.name === 'AbortError')) {
-        setAskEntries(current => current.filter(item => item.id !== entry.id))
-        return
-      }
-      const message = cause instanceof Error ? cause.message : String(cause)
-      setAskEntries(current => current.map(item =>
-        item.id === entry.id ? { ...item, status: 'error' as const, error: message } : item))
-    }).finally(() => {
-      if (askAbortRef.current === controller) askAbortRef.current = null
-    })
-  }
-
-  // History entries are revalidated host-side; slice defensively so an
-  // over-long entry can never poison a follow-up.
-  const askHistory = (excludeId?: string): { question: string; answer: string }[] =>
-    askEntries
-      .filter(item => item.status === 'done' && item.id !== excludeId)
-      .map(item => ({
-        question: item.question.slice(0, ASK_QUESTION_MAX_CHARS),
-        answer: item.answer.slice(0, ASK_ANSWER_MAX_CHARS),
-      }))
-      .slice(-20)
-
   const sendAsk = (): void => {
-    const question = askDraft.trim().slice(0, ASK_QUESTION_MAX_CHARS)
-    if (question === '' || askAbortRef.current !== null) return
-    const entry: AskEntry = {
-      id: annotationId(),
-      ...askQuote !== null ? { quote: askQuote.slice(0, ASK_QUOTE_MAX_CHARS) } : {},
-      question,
-      answer: '',
-      status: 'pending',
-    }
-    const history = askHistory()
-    setAskEntries(current => [...current, entry])
+    askThread.send({ question: askDraft, quote: askQuote })
     setAskDraft('')
     setAskQuote(null)
-    launchAsk(entry, history)
   }
 
-  const retryAsk = (entry: AskEntry): void => {
-    if (askAbortRef.current !== null) return
-    const pending: AskEntry = {
-      id: entry.id,
-      ...entry.quote !== undefined ? { quote: entry.quote.slice(0, ASK_QUOTE_MAX_CHARS) } : {},
-      question: entry.question.slice(0, ASK_QUESTION_MAX_CHARS),
-      answer: '',
-      status: 'pending',
-    }
-    setAskEntries(current => current.map(item => (item.id === entry.id ? pending : item)))
-    launchAsk(pending, askHistory(entry.id))
-  }
+  const retryAsk = (entry: AskEntry): void => { askThread.retry(entry) }
 
-  const stopAsk = (): void => { askAbortRef.current?.abort() }
+  const stopAsk = (): void => { askThread.stop() }
 
   const settle = (kind: 'approve' | 'feedback' | 'dismiss', send: () => Promise<void>): void => {
     setBusy(kind)
@@ -492,12 +423,12 @@ function PlannotatorReview({
           </div>
           {tab === 'ask' ? (
             <AskAISection
-              entries={askEntries}
+              entries={askThread.entries}
               draft={askDraft}
               onDraftChange={setAskDraft}
               stagedQuote={askQuote}
               onClearQuote={() => { setAskQuote(null) }}
-              busy={askAbortRef.current !== null}
+              busy={askThread.busy}
               onSend={sendAsk}
               onStop={stopAsk}
               onRetry={retryAsk}

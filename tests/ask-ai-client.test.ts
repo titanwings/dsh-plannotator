@@ -41,7 +41,7 @@ test('asks through the composed connection service and unwraps the answer', asyn
   assert.deepEqual(calls[0]?.payload, request)
 })
 
-test('maps a host error branch to AskAiError and cancelled to AbortError', async () => {
+test('maps host error branches to AskAiError, keeping cancelled distinct from abort', async () => {
   setAskAiConnection({
     rpc: { call: async () => ({ ok: false, error: { code: 'internal', message: 'session gone', details: {} } }) },
   })
@@ -52,12 +52,15 @@ test('maps a host error branch to AskAiError and cancelled to AbortError', async
     return true
   })
 
+  // A host cancellation is a structured AskAiError, NOT an AbortError: the UI
+  // must be able to tell it apart from the user's own Stop gesture.
   setAskAiConnection({
     rpc: { call: async () => ({ ok: false, error: { code: 'cancelled', message: 'cancelled', details: {} } }) },
   })
   await assert.rejects(callAskAi(request, signal()), (cause: unknown) => {
-    assert.ok(cause instanceof DOMException)
-    assert.equal(cause.name, 'AbortError')
+    assert.ok(cause instanceof AskAiError)
+    assert.equal(cause.code, 'cancelled')
+    assert.ok(!(cause instanceof DOMException))
     return true
   })
 })

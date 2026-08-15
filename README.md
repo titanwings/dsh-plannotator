@@ -111,8 +111,11 @@ the still-open review turn) — that can inspect the repository with read-only
 tools (`read`, `grep`, `glob`, `web_search`, `web_fetch`, probed against the
 session's actual tool set). The answer renders inline as Markdown; follow-up
 questions keep the thread's context, and **Stop** cancels a slow answer. The
-answering child never modifies files, never rewrites the plan, and cannot
-delegate further.
+thread survives navigating into the answering subagent and page reloads (it is
+kept locally like annotation drafts), so an in-flight answer still lands when
+you come back. **Stop** silently drops the pending question, while a host-side
+cancellation stays visible as an error entry with Retry. The answering child
+never modifies files, never rewrites the plan, and cannot delegate further.
 
 ### Protect unfinished reviews
 
@@ -225,8 +228,8 @@ must be correct before the first edit:
   conversation turns — under a read-only tool filter (a composition without the
   fork provider falls back to a fresh child). Answers are unary (no streaming
   yet), capped at 32k characters so they always fit a follow-up's context, and
-  the Q&A thread lives only in the open panel — it is not persisted like
-  annotation drafts.
+  the Q&A thread is kept in local storage per review — it survives panel
+  navigation and reloads, unlike annotation drafts which reject stale plans.
 - Feedback travels through DSH's existing response channel. No third-party
   service or telemetry is used.
 

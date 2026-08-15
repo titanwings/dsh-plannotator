@@ -46,8 +46,11 @@ function isResult(value: unknown): value is RpcResult<unknown> {
 
 function unwrap(result: RpcResult<unknown>): string {
   if (!result.ok) {
+    // A host cancellation is a structured outcome, not a client-side abort:
+    // callers must be able to tell "user pressed Stop" from "the host
+    // cancelled for its own reasons", so it is NOT translated to AbortError.
     if (result.error.code === 'cancelled') {
-      throw new DOMException(result.error.message, 'AbortError')
+      throw new AskAiError(result.error.message, 'cancelled')
     }
     throw new AskAiError(result.error.message, result.error.code)
   }

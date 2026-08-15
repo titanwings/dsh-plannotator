@@ -12,6 +12,7 @@ const program = ts.createProgram({
     'src/host/ask-ai.ts',
     'src/client/index.ts',
     'src/client/ask-ai.ts',
+    'src/client/ask-thread.ts',
     'src/client/AskAISection.tsx',
     'src/client/contracts.ts',
     'src/client/locales.ts',

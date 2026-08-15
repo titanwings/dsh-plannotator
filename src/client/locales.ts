@@ -35,6 +35,7 @@ export const en = {
   askEmpty: 'Ask anything about this plan. Select plan text first to quote it.',
   askClearQuote: 'Remove the quoted excerpt',
   askAnswering: 'The plan Q&A agent is answering…',
+  askCancelled: 'The plan Q&A agent was cancelled before answering.',
 } as const
 
 export type PlannotatorKey = keyof typeof en
@@ -76,4 +77,5 @@ export const zh: Record<PlannotatorKey, string> = {
   askEmpty: '关于这份计划的任何问题都可以问；先选中计划原文即可引用。',
   askClearQuote: '移除引用的摘录',
   askAnswering: '计划问答 Agent 正在回答…',
+  askCancelled: '计划问答 Agent 在回答前被取消了。',
 }

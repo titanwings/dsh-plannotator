@@ -35,6 +35,7 @@ export declare const en: {
     readonly askEmpty: "Ask anything about this plan. Select plan text first to quote it.";
     readonly askClearQuote: "Remove the quoted excerpt";
     readonly askAnswering: "The plan Q&A agent is answering…";
+    readonly askCancelled: "The plan Q&A agent was cancelled before answering.";
 };
 export type PlannotatorKey = keyof typeof en;
 /** Chinese copy mirrors every English key; registration enforces one namespace owner. */

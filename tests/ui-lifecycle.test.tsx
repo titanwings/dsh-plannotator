@@ -218,9 +218,11 @@ async function click(element: Element): Promise<void> {
   })
 }
 
-async function renderReview(width = 1600) {
+async function renderWithClient(
+  client: ClientExports,
+  width = 1600,
+): Promise<{ active: { value: 'en' | 'zh' }; client: ClientExports; container: HTMLElement; review: { wait: QuestionWait; calls: unknown[] }; root: ReturnType<typeof createRoot>; t: Translate }> {
   viewportWidth = width
-  const client = await loadClientBundle()
   const active = { value: 'en' as const } as { value: 'en' | 'zh' }
   const t = translator(active)
   const review = fixture()
@@ -231,6 +233,10 @@ async function renderReview(width = 1600) {
     root.render(React.createElement(client.PlannotatorPanel, { matched: review.wait, t }))
   })
   return { active, client, container, review, root, t }
+}
+
+async function renderReview(width = 1600) {
+  return renderWithClient(await loadClientBundle(), width)
 }
 
 async function changeViewport(width: number): Promise<void> {
@@ -738,4 +744,118 @@ test('ask ai slices over-long pasted questions to the host budget on send', asyn
   const second = calls[1] as { question: string }
   assert.equal(second.question, 'Why so long?')
   await React.act(async () => { view.root.unmount() })
+})
+
+test('ask ai keeps a host-cancelled question visible instead of silently dropping it', async () => {
+  const view = await renderReview()
+  view.client.apply(mockApplyCtx({
+    rpc: {
+      call: async () => ({ ok: false, error: { code: 'cancelled', message: 'the question was cancelled', details: {} } }),
+    },
+  }) as never)
+
+  await click(findButton('Ask AI'))
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, 'Is the session alive?') })
+  await click(findButton('Send'))
+  await flush()
+
+  const entry = dom.window.document.querySelector('.dsh-plannotator-ask-entry')
+  assert.ok(entry, 'the cancelled question must stay visible')
+  assert.match(entry.textContent ?? '', /was cancelled before answering/)
+  assert.ok(findButton('Retry'))
+  await React.act(async () => { view.root.unmount() })
+})
+
+test('ask ai survives navigating away: the answer lands after the panel remounts', async () => {
+  const client = await loadClientBundle()
+  let settle: ((answer: string) => void) | undefined
+  client.apply(mockApplyCtx({
+    rpc: {
+      call: (_channel: string, _endpoint: string, _payload: unknown, signal?: AbortSignal) =>
+        new Promise((resolve, rejectInner) => {
+          settle = resolve
+          signal?.addEventListener('abort', () => { rejectInner(new DOMException('aborted', 'AbortError')) })
+        }).then(answer => ({ ok: true, value: { answer } })),
+    },
+  }) as never)
+
+  const first = await renderWithClient(client)
+  await click(findButton('Ask AI'))
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, 'What ships first?') })
+  await click(findButton('Send'))
+  await flush()
+  assert.match(dom.window.document.body.textContent ?? '', /What ships first\?/)
+
+  // Simulate clicking into the answering subagent: the panel unmounts, but the
+  // in-flight request must NOT be aborted and the thread must not be lost.
+  await React.act(async () => { first.root.unmount() })
+  assert.ok(settle, 'the request must still be in flight after unmount')
+
+  const second = await renderWithClient(client)
+  await click(findButton('Ask AI'))
+  assert.match(dom.window.document.body.textContent ?? '', /What ships first\?/, 'thread restored after remount')
+
+  settle?.('The answer arrived after you came back.')
+  await flush()
+  assert.match(
+    dom.window.document.querySelector('.dsh-plannotator-ask-answer')?.textContent ?? '',
+    /The answer arrived after you came back/,
+  )
+  await React.act(async () => { second.root.unmount() })
+})
+
+test('ask ai restores the thread from local storage after a reload', async () => {
+  const first = await renderReview()
+  let keepPending: (() => void) | undefined
+  first.client.apply(mockApplyCtx({
+    rpc: {
+      call: async (_channel: string, _endpoint: string, payload: unknown) => {
+        const question = (payload as { question: string }).question
+        if (question === 'Survives reloads?') return { ok: true, value: { answer: 'Persisted answer.' } }
+        // The second question stays in flight: after the reload its restored
+        // pending entry must surface as cancelled instead of hanging.
+        return new Promise((resolve, rejectInner) => {
+          keepPending = () => resolve({ ok: true, value: { answer: 'never' } })
+          void rejectInner
+        })
+      },
+    },
+  }) as never)
+  await click(findButton('Ask AI'))
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, 'Survives reloads?') })
+  await click(findButton('Send'))
+  await flush()
+  assert.match(
+    dom.window.document.querySelector('.dsh-plannotator-ask-answer')?.textContent ?? '',
+    /Persisted answer/,
+  )
+  await React.act(async () => { setTextareaValue(input, 'Still in flight?') })
+  await click(findButton('Send'))
+  await flush()
+  assert.match(dom.window.document.body.textContent ?? '', /Still in flight\?/)
+  assert.ok(keepPending, 'second question must remain in flight')
+  await React.act(async () => { first.root.unmount() })
+
+  // A fresh bundle (module state reset, like a page reload) restores the
+  // thread from localStorage: the answered question shows its answer, and the
+  // stale pending one is surfaced as cancelled (the reload killed its fetch).
+  const second = await renderReview()
+  second.client.apply(mockApplyCtx({
+    rpc: {
+      call: async () => ({ ok: false, error: { code: 'cancelled', message: 'cancelled', details: {} } }),
+    },
+  }) as never)
+  await click(findButton('Ask AI'))
+  await flush()
+  assert.match(dom.window.document.body.textContent ?? '', /Survives reloads\?/)
+  assert.match(dom.window.document.body.textContent ?? '', /Persisted answer/)
+  assert.match(dom.window.document.body.textContent ?? '', /Still in flight\?/)
+  assert.match(dom.window.document.body.textContent ?? '', /was cancelled before answering/)
+  await React.act(async () => { second.root.unmount() })
 })
