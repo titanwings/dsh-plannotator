@@ -323,10 +323,12 @@ function PlannotatorReview({
     })
   }
 
+  // History entries are revalidated host-side (question ≤ 8k, answer ≤ 32k);
+  // slice defensively so an over-long entry can never poison a follow-up.
   const askHistory = (excludeId?: string): { question: string; answer: string }[] =>
     askEntries
       .filter(item => item.status === 'done' && item.id !== excludeId)
-      .map(item => ({ question: item.question, answer: item.answer }))
+      .map(item => ({ question: item.question.slice(0, 8_000), answer: item.answer.slice(0, 32_000) }))
       .slice(-20)
 
   const sendAsk = (): void => {

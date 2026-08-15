@@ -203,7 +203,8 @@ pnpm dsh plugin --profile web add /path/to/dsh-plannotator
   （`/dsh-plannotator`）。每个问题都会以一次性子 Agent 运行（标记为 `plan-ask`，
   会出现在会话的 subagent 列表中），它 fork 被审阅会话，在只读工具过滤下继承其模型、
   组合与已完成的对话轮次（没有 fork provider 的组合会退化为全新子 Agent）。
-  回答是单次的（暂不支持流式），问答线程只存在于打开的面板中，不像批注草稿那样持久化。
+  回答是单次的（暂不支持流式），且最长约 32k 字符、超出部分截断以保证能作为追问上下文
+  往返；问答线程只存在于打开的面板中，不像批注草稿那样持久化。
 - 反馈走 DSH 现有响应通道；不使用第三方服务或遥测。
 
 <details>

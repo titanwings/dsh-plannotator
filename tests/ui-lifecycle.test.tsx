@@ -668,3 +668,40 @@ test('ask ai surfaces host errors and retries the failed question', async () => 
   )
   await React.act(async () => { view.root.unmount() })
 })
+
+test('ask ai slices over-long history entries out of every follow-up payload', async () => {
+  const view = await renderReview()
+  const longAnswer = 'The lazy migration keeps rollback cheap. '.repeat(900)
+  assert.ok(longAnswer.length > 32_000)
+  const calls: unknown[] = []
+  view.client.apply(mockApplyCtx({
+    rpc: {
+      call: async (_channel: string, _endpoint: string, payload: unknown) => {
+        calls.push(payload)
+        return { ok: true, value: { answer: longAnswer } }
+      },
+    },
+  }) as never)
+
+  await click(findButton('Ask AI'))
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, 'Why lazy?') })
+  await click(findButton('Send'))
+  await flush()
+  assert.equal(calls.length, 1)
+
+  await React.act(async () => { setTextareaValue(input, 'What ships first?') })
+  await click(findButton('Send'))
+  await flush()
+  assert.equal(calls.length, 2)
+
+  const followUp = calls[1] as { history?: readonly { question: string; answer: string }[] }
+  assert.equal(followUp.history?.length, 1)
+  const entry = followUp.history?.[0]
+  assert.ok(entry)
+  assert.equal(entry.question, 'Why lazy?')
+  assert.ok(entry.answer.length <= 32_000)
+  assert.match(entry.answer, /The lazy migration keeps rollback cheap/)
+  await React.act(async () => { view.root.unmount() })
+})

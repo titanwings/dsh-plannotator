@@ -13,6 +13,11 @@ export declare const MAX_HISTORY_ENTRIES = 20;
 export declare const MAX_HISTORY_QUESTION_CHARS = 8000;
 export declare const MAX_HISTORY_ANSWER_CHARS = 32000;
 /**
+ * Cap on a returned answer, equal to the history budget so the answer always
+ * round-trips as a later follow-up's history entry without being rejected.
+ */
+export declare const MAX_ANSWER_CHARS = 32000;
+/**
  * Read-only tools offered to the answering child, in preference order. Each
  * name is probed against the parent scope before use: `tools.restrict()` fails
  * loud on unknown names, so a preset without one of these must not fail Ask AI.

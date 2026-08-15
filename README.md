@@ -224,8 +224,9 @@ must be correct before the first edit:
   forks the reviewed session — inheriting its model, composition, and completed
   conversation turns — under a read-only tool filter (a composition without the
   fork provider falls back to a fresh child). Answers are unary (no streaming
-  yet), and the Q&A thread lives only in the open panel — it is not persisted
-  like annotation drafts.
+  yet), capped at 32k characters so they always fit a follow-up's context, and
+  the Q&A thread lives only in the open panel — it is not persisted like
+  annotation drafts.
 - Feedback travels through DSH's existing response channel. No third-party
   service or telemetry is used.
 

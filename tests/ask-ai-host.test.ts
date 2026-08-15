@@ -298,6 +298,37 @@ test('handler maps non-completed stop reasons and empty output', async () => {
   if (!noAnswer.ok) assert.match(noAnswer.error.message, /no answer/)
 })
 
+test('handler bounds over-long answers so they still round-trip as history', async () => {
+  const longText = 'The lazy migration keeps rollback cheap. '.repeat(900)
+  assert.ok(longText.length > 32_000)
+  const { handler } = handlerFixture({
+    output: [{ type: 'text', text: longText }],
+  })
+  const result = await handler('ask', validPayload(), signal())
+  assert.equal(result.ok, true)
+  if (result.ok) {
+    assert.ok(result.value.answer.length <= 32_000)
+    assert.match(result.value.answer, /\[\.\.\. answer truncated for length \.\.\.\]$/)
+    assert.match(result.value.answer, /The lazy migration keeps rollback cheap/)
+  }
+
+  // The truncated answer must pass the host's own history validation: this is
+  // the regression for an over-long answer poisoning every follow-up question.
+  const followUp = parseAskAiRequest(validPayload({
+    question: 'What ships first?',
+    history: result.ok ? [{ question: 'Why lazy?', answer: result.value.answer }] : [],
+  }))
+  assert.deepEqual(followUp.ok, true)
+})
+
+test('handler leaves answers within the cap untouched', async () => {
+  const { handler } = handlerFixture({
+    output: [{ type: 'text', text: 'Short and complete.' }],
+  })
+  const result = await handler('ask', validPayload(), signal())
+  assert.deepEqual(result, { ok: true, value: { answer: 'Short and complete.' } })
+})
+
 test('handler answers cancelled when the request signal wins mid-run', async () => {
   const controller = new AbortController()
   const { parent } = fakeParent()

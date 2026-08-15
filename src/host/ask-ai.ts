@@ -14,6 +14,12 @@ export const MAX_QUOTE_CHARS = 8_000
 export const MAX_HISTORY_ENTRIES = 20
 export const MAX_HISTORY_QUESTION_CHARS = 8_000
 export const MAX_HISTORY_ANSWER_CHARS = 32_000
+/**
+ * Cap on a returned answer, equal to the history budget so the answer always
+ * round-trips as a later follow-up's history entry without being rejected.
+ */
+export const MAX_ANSWER_CHARS = MAX_HISTORY_ANSWER_CHARS
+const ANSWER_TRUNCATION_MARKER = '\n\n[... answer truncated for length ...]'
 
 /**
  * Read-only tools offered to the answering child, in preference order. Each
@@ -290,6 +296,13 @@ function answerText(output: readonly { readonly type: string; readonly text?: st
     .join('')
 }
 
+/** Bound an answer so it always fits the history budget; marker included in the cap. */
+function boundAnswer(answer: string): string {
+  if (answer.length <= MAX_ANSWER_CHARS) return answer
+  const head = MAX_ANSWER_CHARS - ANSWER_TRUNCATION_MARKER.length
+  return `${answer.slice(0, head)}${ANSWER_TRUNCATION_MARKER}`
+}
+
 /** Endpoint dispatcher carried by the `/dsh-plannotator` channel. */
 export function createAskAiHandler(ctx: HostContext) {
   return async (endpoint: string, payload: unknown, signal: AbortSignal): Promise<AskAiRpcResult> => {
@@ -338,7 +351,7 @@ export function createAskAiHandler(ctx: HostContext) {
       }
       const answer = answerText(result.output)
       if (answer.trim() === '') return failure('internal', 'the plan Q&A agent returned no answer')
-      return { ok: true, value: { answer } }
+      return { ok: true, value: { answer: boundAnswer(answer) } }
     } catch (cause: unknown) {
       if (signal.aborted) return failure('cancelled', 'the question was cancelled')
       return failure('internal', messageOf(cause))
