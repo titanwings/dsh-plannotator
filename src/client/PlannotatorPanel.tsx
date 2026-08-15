@@ -296,9 +296,12 @@ function PlannotatorReview({
   }
 
   const sendAsk = (): void => {
-    askThread.send({ question: askDraft, quote: askQuote })
-    setAskDraft('')
-    setAskQuote(null)
+    // Clear the composer only when the question was actually accepted; a
+    // rejected send (busy gate) must not eat what the user typed.
+    if (askThread.send({ question: askDraft, quote: askQuote })) {
+      setAskDraft('')
+      setAskQuote(null)
+    }
   }
 
   const retryAsk = (entry: AskEntry): void => { askThread.retry(entry) }

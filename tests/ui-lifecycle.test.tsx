@@ -859,3 +859,36 @@ test('ask ai restores the thread from local storage after a reload', async () =>
   assert.match(dom.window.document.body.textContent ?? '', /was cancelled before answering/)
   await React.act(async () => { second.root.unmount() })
 })
+
+test('ask ai only clears the composer when the question is actually accepted', async () => {
+  const view = await renderReview()
+  const calls: unknown[] = []
+  view.client.apply(mockApplyCtx({
+    rpc: {
+      call: async (_channel: string, _endpoint: string, payload: unknown) => {
+        calls.push(payload)
+        return { ok: true, value: { answer: 'Sent.' } }
+      },
+    },
+  }) as never)
+  await click(findButton('Ask AI'))
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+
+  // A whitespace-only draft is rejected by the send gate: the Send button is
+  // disabled and the composer keeps the draft instead of eating it.
+  await React.act(async () => { setTextareaValue(input, '   ') })
+  const sendButton = [...dom.window.document.querySelectorAll('button')]
+    .find(candidate => candidate.textContent === 'Send')
+  assert.ok(sendButton)
+  assert.equal((sendButton as HTMLButtonElement).disabled, true)
+  assert.equal(input.value, '   ')
+
+  // A real question is accepted: sent once, and the composer clears.
+  await React.act(async () => { setTextareaValue(input, 'Real question') })
+  await click(findButton('Send'))
+  await flush()
+  assert.equal(calls.length, 1)
+  assert.equal(input.value, '')
+  await React.act(async () => { view.root.unmount() })
+})

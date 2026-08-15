@@ -23,6 +23,13 @@ export function askThreadKey(wait: { readonly sessionId: string; readonly key: s
 interface ScopeState {
   readonly key: string
   entries: AskEntry[]
+  /**
+   * In-flight request gate: non-null exactly while one pending entry exists.
+   * `busy` derives from `entries`, so every path that touches this controller
+   * (including any future timeout/cancel) must commit the matching entries
+   * change in the same step — otherwise the send gate and the button states
+   * desync.
+   */
   controller: AbortController | null
 }
 
@@ -151,7 +158,8 @@ function startAsk(
 export interface AskThreadHandle {
   readonly entries: readonly AskEntry[]
   readonly busy: boolean
-  readonly send: (input: { readonly question: string; readonly quote: string | null }) => void
+  /** Send one question; false when rejected (busy or empty after trim). */
+  readonly send: (input: { readonly question: string; readonly quote: string | null }) => boolean
   readonly retry: (entry: AskEntry) => void
   readonly stop: () => void
 }
@@ -167,10 +175,10 @@ export function useAskThread(
     subscribeAskThread,
     useCallback(() => scope.entries, [scope]),
   )
-  const send = useCallback((input: { readonly question: string; readonly quote: string | null }): void => {
-    if (scope.controller !== null) return
+  const send = useCallback((input: { readonly question: string; readonly quote: string | null }): boolean => {
+    if (scope.controller !== null) return false
     const question = input.question.trim().slice(0, ASK_QUESTION_MAX_CHARS)
-    if (question === '') return
+    if (question === '') return false
     const entry: AskEntry = {
       id: entryId(),
       ...(input.quote !== null ? { quote: input.quote.slice(0, ASK_QUOTE_MAX_CHARS) } : {}),
@@ -179,6 +187,7 @@ export function useAskThread(
       status: 'pending',
     }
     startAsk(scope, wait, plan, entry, cancelledCopy, false)
+    return true
   }, [scope, wait, plan, cancelledCopy])
   const retry = useCallback((entry: AskEntry): void => {
     if (scope.controller !== null) return

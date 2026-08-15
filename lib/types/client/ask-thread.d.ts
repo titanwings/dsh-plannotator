@@ -9,10 +9,11 @@ export declare function subscribeAskThread(listener: () => void): () => void;
 export interface AskThreadHandle {
     readonly entries: readonly AskEntry[];
     readonly busy: boolean;
+    /** Send one question; false when rejected (busy or empty after trim). */
     readonly send: (input: {
         readonly question: string;
         readonly quote: string | null;
-    }) => void;
+    }) => boolean;
     readonly retry: (entry: AskEntry) => void;
     readonly stop: () => void;
 }
