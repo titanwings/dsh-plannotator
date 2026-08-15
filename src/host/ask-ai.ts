@@ -5,20 +5,37 @@
  * package would break Cordis service identity.
  */
 
-export const ASK_AI_CHANNEL = '/dsh-plannotator'
-export const ASK_AI_ENDPOINT = 'ask'
+// The wire contract (budgets, channel/endpoint names, request types) is
+// defined once in ../shared/limits.ts so this Host half and the browser client
+// can never drift; re-exported here because this module is Ask AI's public
+// surface.
+import {
+  ASK_AI_CHANNEL,
+  ASK_AI_ENDPOINT,
+  MAX_ANSWER_CHARS,
+  MAX_HISTORY_ANSWER_CHARS,
+  MAX_HISTORY_ENTRIES,
+  MAX_HISTORY_QUESTION_CHARS,
+  MAX_PLAN_CHARS,
+  MAX_QUESTION_CHARS,
+  MAX_QUOTE_CHARS,
+  type AskAiHistoryEntry,
+  type AskAiRequest,
+} from '../shared/limits.js'
 
-export const MAX_PLAN_CHARS = 200_000
-export const MAX_QUESTION_CHARS = 8_000
-export const MAX_QUOTE_CHARS = 8_000
-export const MAX_HISTORY_ENTRIES = 20
-export const MAX_HISTORY_QUESTION_CHARS = 8_000
-export const MAX_HISTORY_ANSWER_CHARS = 32_000
-/**
- * Cap on a returned answer, equal to the history budget so the answer always
- * round-trips as a later follow-up's history entry without being rejected.
- */
-export const MAX_ANSWER_CHARS = MAX_HISTORY_ANSWER_CHARS
+export {
+  ASK_AI_CHANNEL,
+  ASK_AI_ENDPOINT,
+  MAX_ANSWER_CHARS,
+  MAX_HISTORY_ANSWER_CHARS,
+  MAX_HISTORY_ENTRIES,
+  MAX_HISTORY_QUESTION_CHARS,
+  MAX_PLAN_CHARS,
+  MAX_QUESTION_CHARS,
+  MAX_QUOTE_CHARS,
+  type AskAiHistoryEntry,
+  type AskAiRequest,
+} from '../shared/limits.js'
 const ANSWER_TRUNCATION_MARKER = '\n\n[... answer truncated for length ...]'
 
 /**
@@ -35,20 +52,6 @@ export const ASK_AI_PERSONA = [
   'Never modify files, never rewrite or update the plan itself, and never start new work;',
   'if an answer implies a change, describe what you would change instead.',
 ].join(' ')
-
-export interface AskAiHistoryEntry {
-  readonly question: string
-  readonly answer: string
-}
-
-/** Validated `ask` payload. */
-export interface AskAiRequest {
-  readonly sessionId: string
-  readonly plan: string
-  readonly question: string
-  readonly quote?: string
-  readonly history: readonly AskAiHistoryEntry[]
-}
 
 export interface AskAiAnswer {
   readonly answer: string

@@ -8,12 +8,18 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
 import { AskAiError, callAskAi } from './ask-ai.js'
 import type { AskEntry } from './AskAISection.js'
+import {
+  MAX_HISTORY_ANSWER_CHARS,
+  MAX_HISTORY_ENTRIES,
+  MAX_HISTORY_QUESTION_CHARS,
+  MAX_QUESTION_CHARS,
+  MAX_QUOTE_CHARS,
+} from '../shared/limits.js'
 
-// Payload budgets aligned with the Host ask endpoint; sliced before sending
-// so an over-long value can never fail once and then keep failing on Retry.
-const ASK_QUESTION_MAX_CHARS = 8_000
-const ASK_QUOTE_MAX_CHARS = 8_000
-const ASK_ANSWER_MAX_CHARS = 32_000
+// Payload budgets come from the shared wire contract (../shared/limits.ts) —
+// the same numbers the Host validates on receipt — and values are sliced
+// before sending so an over-long value can never fail once and then keep
+// failing on Retry.
 
 /** localStorage key for one review's Ask AI thread. */
 export function askThreadKey(wait: { readonly sessionId: string; readonly key: string }): string {
@@ -83,10 +89,10 @@ function buildHistory(entries: readonly AskEntry[], excludeId?: string): { quest
   return entries
     .filter(entry => entry.status === 'done' && entry.id !== excludeId)
     .map(entry => ({
-      question: entry.question.slice(0, ASK_QUESTION_MAX_CHARS),
-      answer: entry.answer.slice(0, ASK_ANSWER_MAX_CHARS),
+      question: entry.question.slice(0, MAX_HISTORY_QUESTION_CHARS),
+      answer: entry.answer.slice(0, MAX_HISTORY_ANSWER_CHARS),
     }))
-    .slice(-20)
+    .slice(-MAX_HISTORY_ENTRIES)
 }
 
 function scopeOf(key: string, cancelledCopy: string): ScopeState {
@@ -199,11 +205,11 @@ export function useAskThread(
   )
   const send = useCallback((input: { readonly question: string; readonly quote: string | null }): boolean => {
     if (scope.controller !== null) return false
-    const question = input.question.trim().slice(0, ASK_QUESTION_MAX_CHARS)
+    const question = input.question.trim().slice(0, MAX_QUESTION_CHARS)
     if (question === '') return false
     const entry: AskEntry = {
       id: entryId(),
-      ...(input.quote !== null ? { quote: input.quote.slice(0, ASK_QUOTE_MAX_CHARS) } : {}),
+      ...(input.quote !== null ? { quote: input.quote.slice(0, MAX_QUOTE_CHARS) } : {}),
       question,
       answer: '',
       status: 'pending',
@@ -215,8 +221,8 @@ export function useAskThread(
     if (scope.controller !== null) return
     const pending: AskEntry = {
       id: entry.id,
-      ...(entry.quote !== undefined ? { quote: entry.quote.slice(0, ASK_QUOTE_MAX_CHARS) } : {}),
-      question: entry.question.slice(0, ASK_QUESTION_MAX_CHARS),
+      ...(entry.quote !== undefined ? { quote: entry.quote.slice(0, MAX_QUOTE_CHARS) } : {}),
+      question: entry.question.slice(0, MAX_QUESTION_CHARS),
       answer: '',
       status: 'pending',
     }

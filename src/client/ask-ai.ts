@@ -4,19 +4,17 @@
  * when no `connection` service is composed (fixture pages, tests).
  */
 import type { ConnectionLike, RpcResult } from './contracts.js'
+import {
+  ASK_AI_CHANNEL,
+  ASK_AI_ENDPOINT,
+  type AskAiHistoryEntry,
+  type AskAiRequest,
+} from '../shared/limits.js'
 
-export interface AskAiHistoryEntry {
-  readonly question: string
-  readonly answer: string
-}
-
-export interface AskAiRequest {
-  readonly sessionId: string
-  readonly plan: string
-  readonly question: string
-  readonly quote?: string
-  readonly history: readonly AskAiHistoryEntry[]
-}
+// The wire contract (budgets, channel/endpoint names, request types) is
+// defined once in ../shared/limits.ts and re-exported here so callers of this
+// module keep the same surface.
+export type { AskAiHistoryEntry, AskAiRequest } from '../shared/limits.js'
 
 /** Ask AI failure carrying the Host RPC error code when one arrived. */
 export class AskAiError extends Error {
@@ -28,9 +26,6 @@ export class AskAiError extends Error {
     this.name = 'AskAiError'
   }
 }
-
-const CHANNEL = '/dsh-plannotator'
-const ENDPOINT = 'ask'
 
 function randomId(): string {
   return typeof crypto.randomUUID === 'function'
@@ -63,10 +58,10 @@ function unwrap(result: RpcResult<unknown>): string {
 
 async function callViaFetch(request: AskAiRequest, signal: AbortSignal): Promise<string> {
   const rpcId = randomId()
-  const response = await fetch(`${CHANNEL}/${ENDPOINT}`, {
+  const response = await fetch(`${ASK_AI_CHANNEL}/${ASK_AI_ENDPOINT}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ type: 'client-request', rpcId, method: ENDPOINT, payload: request }),
+    body: JSON.stringify({ type: 'client-request', rpcId, method: ASK_AI_ENDPOINT, payload: request }),
     signal,
   })
   if (!response.ok) {
@@ -85,7 +80,7 @@ async function callViaConnection(
   signal: AbortSignal,
 ): Promise<string> {
   try {
-    return unwrap(await connection.rpc.call(CHANNEL, ENDPOINT, request, signal))
+    return unwrap(await connection.rpc.call(ASK_AI_CHANNEL, ASK_AI_ENDPOINT, request, signal))
   } catch (cause: unknown) {
     // The composed client deep-validates the envelope and throws its raw zod
     // error on any schema violation; never leak that dump to the user.

@@ -4,19 +4,8 @@
  * session. All DSH types are structural and local — bundling a DSH runtime
  * package would break Cordis service identity.
  */
-export declare const ASK_AI_CHANNEL = "/dsh-plannotator";
-export declare const ASK_AI_ENDPOINT = "ask";
-export declare const MAX_PLAN_CHARS = 200000;
-export declare const MAX_QUESTION_CHARS = 8000;
-export declare const MAX_QUOTE_CHARS = 8000;
-export declare const MAX_HISTORY_ENTRIES = 20;
-export declare const MAX_HISTORY_QUESTION_CHARS = 8000;
-export declare const MAX_HISTORY_ANSWER_CHARS = 32000;
-/**
- * Cap on a returned answer, equal to the history budget so the answer always
- * round-trips as a later follow-up's history entry without being rejected.
- */
-export declare const MAX_ANSWER_CHARS = 32000;
+import { type AskAiRequest } from '../shared/limits.js';
+export { ASK_AI_CHANNEL, ASK_AI_ENDPOINT, MAX_ANSWER_CHARS, MAX_HISTORY_ANSWER_CHARS, MAX_HISTORY_ENTRIES, MAX_HISTORY_QUESTION_CHARS, MAX_PLAN_CHARS, MAX_QUESTION_CHARS, MAX_QUOTE_CHARS, type AskAiHistoryEntry, type AskAiRequest, } from '../shared/limits.js';
 /**
  * Read-only tools offered to the answering child, in preference order. Each
  * name is probed against the parent scope before use: `tools.restrict()` fails
@@ -24,18 +13,6 @@ export declare const MAX_ANSWER_CHARS = 32000;
  */
 export declare const READ_ONLY_TOOL_CANDIDATES: readonly ["read", "grep", "glob", "web_search", "web_fetch"];
 export declare const ASK_AI_PERSONA: string;
-export interface AskAiHistoryEntry {
-    readonly question: string;
-    readonly answer: string;
-}
-/** Validated `ask` payload. */
-export interface AskAiRequest {
-    readonly sessionId: string;
-    readonly plan: string;
-    readonly question: string;
-    readonly quote?: string;
-    readonly history: readonly AskAiHistoryEntry[];
-}
 export interface AskAiAnswer {
     readonly answer: string;
 }
@@ -160,4 +137,3 @@ export declare function probeReadOnlyTools(parent: AgentLike): string[];
 export declare function createAskAiHandler(ctx: HostContext): (endpoint: string, payload: unknown, signal: AbortSignal) => Promise<AskAiRpcResult>;
 /** Register the channel on the shared web transport; disposed with the plugin fiber. */
 export declare function registerAskAi(ctx: HostContext): void;
-export {};

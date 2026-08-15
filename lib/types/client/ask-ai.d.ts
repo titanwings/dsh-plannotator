@@ -4,17 +4,8 @@
  * when no `connection` service is composed (fixture pages, tests).
  */
 import type { ConnectionLike } from './contracts.js';
-export interface AskAiHistoryEntry {
-    readonly question: string;
-    readonly answer: string;
-}
-export interface AskAiRequest {
-    readonly sessionId: string;
-    readonly plan: string;
-    readonly question: string;
-    readonly quote?: string;
-    readonly history: readonly AskAiHistoryEntry[];
-}
+import { type AskAiRequest } from '../shared/limits.js';
+export type { AskAiHistoryEntry, AskAiRequest } from '../shared/limits.js';
 /** Ask AI failure carrying the Host RPC error code when one arrived. */
 export declare class AskAiError extends Error {
     readonly code: string;
