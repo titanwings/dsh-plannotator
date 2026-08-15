@@ -8,7 +8,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { QuestionWait, Translate } from './contracts.js'
 import { AskAISection, type AskCopy, type AskEntry } from './AskAISection.js'
-import { useAskThread } from './ask-thread.js'
+import { forgetAskThread, useAskThread } from './ask-thread.js'
 import {
   parseStoredDraft, planRevision, renderPlanFeedback,
   type PlanAnnotation,
@@ -328,6 +328,8 @@ function PlannotatorReview({
     setError(null)
     void send().then(() => {
       removeDraft(storageKey)
+      // The review is settled: release its Ask AI thread (memory + storage).
+      forgetAskThread(matched)
     }).catch((cause: unknown) => {
       setBusy(null)
       setError(cause instanceof Error ? cause.message : String(cause))

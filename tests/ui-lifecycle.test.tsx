@@ -874,6 +874,60 @@ test('ask ai restores the thread from local storage after a reload', async () =>
   await React.act(async () => { second.root.unmount() })
 })
 
+test('settling a review forgets its ask thread from memory and storage', async () => {
+  const view = await renderReview()
+  view.client.apply(mockApplyCtx({
+    rpc: {
+      call: async () => ({ ok: true, value: { answer: 'Approved anyway.' } }),
+    },
+  }) as never)
+  const askKey = 'dsh-plannotator:ask:v1:session-1:review-1'
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, 'Keep compatibility?') })
+  await click(findButton('Send'))
+  await flush()
+  assert.ok(dom.window.localStorage.getItem(askKey) !== null, 'the thread persists while the review is open')
+
+  await click(findButton('Approve'))
+  await flush()
+  assert.equal(dom.window.localStorage.getItem(askKey), null, 'settling removes the thread key')
+  assert.equal(dom.window.localStorage.length, 0)
+  await React.act(async () => { view.root.unmount() })
+})
+
+test('an answer landing after settle cannot resurrect a forgotten thread', async () => {
+  const view = await renderReview()
+  let resolveAnswer: ((value: { ok: true; value: { answer: string } }) => void) | undefined
+  view.client.apply(mockApplyCtx({
+    rpc: {
+      call: async () => new Promise(resolve => { resolveAnswer = resolve }),
+    },
+  }) as never)
+  const askKey = 'dsh-plannotator:ask:v1:session-1:review-1'
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, 'In flight when settled?') })
+  await click(findButton('Send'))
+  await flush()
+  assert.ok(dom.window.localStorage.getItem(askKey) !== null)
+
+  await click(findButton('Approve'))
+  await flush()
+  assert.equal(dom.window.localStorage.getItem(askKey), null)
+
+  // The in-flight answer lands after the scope was forgotten: the removed
+  // scope is inert, so the commit must not re-persist the key.
+  assert.ok(resolveAnswer)
+  await React.act(async () => {
+    resolveAnswer?.({ ok: true, value: { answer: 'Too late.' } })
+    await Promise.resolve()
+  })
+  await flush()
+  assert.equal(dom.window.localStorage.getItem(askKey), null, 'the forgotten thread stays forgotten')
+  await React.act(async () => { view.root.unmount() })
+})
+
 test('ask ai only clears the composer when the question is actually accepted', async () => {
   const view = await renderReview()
   const calls: unknown[] = []

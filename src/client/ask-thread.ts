@@ -106,8 +106,30 @@ function scopeOf(key: string, cancelledCopy: string): ScopeState {
 }
 
 function commit(scope: ScopeState, entries: AskEntry[]): void {
+  // A scope removed by forgetAskThread is inert: late async callbacks from an
+  // in-flight request must not resurrect its storage key or touch dead UI.
+  if (scopes.get(scope.key) !== scope) return
   scope.entries = entries
   persist(scope.key, entries)
+  notify()
+}
+
+/**
+ * Forget one review's Ask AI thread once the review settles (approve /
+ * request-changes / dismiss): release the in-memory scope and its storage key.
+ * The in-flight request is aborted; a removed scope is inert, so an answer
+ * that lands afterwards cannot resurrect the thread.
+ */
+export function forgetAskThread(wait: { readonly sessionId: string; readonly key: string }): void {
+  const key = askThreadKey(wait)
+  const scope = scopes.get(key)
+  if (scope !== undefined) {
+    // Delete before aborting: abort fires synchronously and its rejection path
+    // commits, which the inert-scope guard must already see as removed.
+    scopes.delete(key)
+    scope.controller?.abort()
+  }
+  try { localStorage.removeItem(key) } catch { /* Thread removal is best-effort. */ }
   notify()
 }
 
