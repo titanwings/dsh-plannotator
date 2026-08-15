@@ -227,7 +227,8 @@ must be correct before the first edit:
   subagent (labelled `plan-ask`, visible in the session's subagent list) that
   forks the reviewed session — inheriting its model, composition, and completed
   conversation turns — under a read-only tool filter (a composition without the
-  fork provider falls back to a fresh child). Answers are unary (no streaming
+  fork provider, or whose fork lacks the requested tool-filter/persona
+  capabilities, falls back to a fresh child). Answers are unary (no streaming
   yet), capped at 32k characters so they always fit a follow-up's context, and
   the Q&A thread is kept in local storage per review — it survives panel
   navigation and reloads, unlike annotation drafts which reject stale plans.

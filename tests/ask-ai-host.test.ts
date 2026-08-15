@@ -145,6 +145,7 @@ function handlerFixture(options: {
   readonly subagents?: unknown
   readonly unknownTools?: readonly string[]
   readonly withFork?: boolean
+  readonly withForkCapabilities?: { readonly toolFilter?: boolean; readonly persona?: boolean }
 }) {
   const { parent } = fakeParent(options.unknownTools ?? [])
   const starts: StartCapture[] = []
@@ -164,8 +165,15 @@ function handlerFixture(options: {
         if (options.startError !== undefined) throw options.startError
         return run
       },
-      getProvider: (name: string): unknown =>
-        name === 'spawn' || (name === 'fork' && options.withFork !== false) ? {} : undefined,
+      getProvider: (name: string): unknown => {
+        if (name === 'spawn') return { capabilities: { toolFilter: true, persona: true } }
+        if (name === 'fork' && options.withFork !== false) {
+          return options.withForkCapabilities === undefined
+            ? { capabilities: { toolFilter: true, persona: true } }
+            : { capabilities: options.withForkCapabilities }
+        }
+        return undefined
+      },
     }
   const agents = 'agents' in options
     ? options.agents
@@ -267,6 +275,21 @@ test('handler falls back to a fresh spawn child when no fork provider is registe
   assert.equal(result.ok, true)
   assert.equal(starts[0]?.name, 'spawn')
   assert.match(starts[0]?.request.prompt[0]?.text ?? '', /The user is reviewing the implementation plan/)
+})
+
+test('handler falls back to spawn when a fork provider lacks the requested capabilities', async () => {
+  for (const capabilities of [
+    {},
+    { toolFilter: true },
+    { persona: true },
+    { toolFilter: false, persona: false },
+  ]) {
+    const { handler, starts } = handlerFixture({ withForkCapabilities: capabilities })
+    const result = await handler('ask', validPayload(), signal())
+    assert.equal(result.ok, true, `fork with capabilities ${JSON.stringify(capabilities)} must degrade`)
+    assert.equal(starts[0]?.name, 'spawn')
+    assert.match(starts[0]?.request.prompt[0]?.text ?? '', /The user is reviewing the implementation plan/)
+  }
 })
 
 test('handler maps a startup failure to an internal error without a run to dispose', async () => {

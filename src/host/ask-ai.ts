@@ -100,8 +100,14 @@ interface SubagentsLike {
     readonly toolFilter: { readonly allow: readonly string[] }
     readonly persona: string
   }): Promise<SubagentRunLike>
-  /** Optional registry probe used to prefer the context-inheriting provider. */
-  getProvider?(name: string): unknown
+  /**
+   * Optional registry probe used to prefer the context-inheriting provider.
+   * `capabilities` is read defensively: a provider that exists but does not
+   * advertise the start-time capabilities Ask AI requests must not be chosen.
+   */
+  getProvider?(name: string):
+    | { readonly capabilities?: { readonly toolFilter?: boolean; readonly persona?: boolean } }
+    | undefined
 }
 
 /**
@@ -109,12 +115,16 @@ interface SubagentsLike {
  * prefix — the earlier requirements, exploration, and discussion that explain
  * the plan. The plan itself sits in the parent's uncompleted current turn
  * (blocked on the review wait), so it always rides in the prompt verbatim.
- * A composition without `fork` degrades to `spawn`; one without either fails
- * loud at `start`.
+ * A composition without `fork` — or whose `fork` does not support the
+ * `toolFilter`/`persona` capabilities every start requests — degrades to
+ * `spawn`; one without either fails loud at `start`.
  */
 export function chooseProvider(subagents: SubagentsLike): 'fork' | 'spawn' {
-  if (typeof subagents.getProvider === 'function' && subagents.getProvider('fork') !== undefined) {
-    return 'fork'
+  if (typeof subagents.getProvider === 'function') {
+    const fork = subagents.getProvider('fork')
+    if (fork?.capabilities?.toolFilter === true && fork?.capabilities?.persona === true) {
+      return 'fork'
+    }
   }
   return 'spawn'
 }
