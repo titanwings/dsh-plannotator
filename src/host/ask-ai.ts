@@ -89,6 +89,23 @@ interface SubagentsLike {
     readonly toolFilter: { readonly allow: readonly string[] }
     readonly persona: string
   }): Promise<SubagentRunLike>
+  /** Optional registry probe used to prefer the context-inheriting provider. */
+  getProvider?(name: string): unknown
+}
+
+/**
+ * Provider preference: `fork` seeds the child with the parent's completed-turn
+ * prefix — the earlier requirements, exploration, and discussion that explain
+ * the plan. The plan itself sits in the parent's uncompleted current turn
+ * (blocked on the review wait), so it always rides in the prompt verbatim.
+ * A composition without `fork` degrades to `spawn`; one without either fails
+ * loud at `start`.
+ */
+export function chooseProvider(subagents: SubagentsLike): 'fork' | 'spawn' {
+  if (typeof subagents.getProvider === 'function' && subagents.getProvider('fork') !== undefined) {
+    return 'fork'
+  }
+  return 'spawn'
 }
 
 interface ConnectionLike {
@@ -186,10 +203,19 @@ export function parseAskAiRequest(payload: unknown): ParseResult {
   }
 }
 
-/** Assemble the single user message of the one-shot child (a spawned child sees no parent context). */
-export function buildAskAiPrompt(request: AskAiRequest): string {
+/**
+ * Assemble the single user message of the one-shot child. With `parentContext`
+ * the child is a fork seeded with the parent's completed turns; the intro then
+ * explains that the plan is quoted because it was submitted in the current,
+ * not-yet-complete turn.
+ */
+export function buildAskAiPrompt(request: AskAiRequest, options: { readonly parentContext: boolean }): string {
   const sections = [
-    'The user is reviewing the implementation plan below in plan mode and has a question about it.',
+    options.parentContext
+      ? 'You wrote the implementation plan below, which the user is now reviewing in plan mode. '
+        + 'Your earlier completed conversation turns are available as context; the plan itself was '
+        + 'submitted in your current turn, so it is quoted verbatim here. The user has a question about it.'
+      : 'The user is reviewing the implementation plan below in plan mode and has a question about it.',
     '',
     '<plan>',
     request.plan,
@@ -256,10 +282,11 @@ export function createAskAiHandler(ctx: HostContext) {
     }
 
     let run: SubagentRunLike
+    const provider = chooseProvider(subagents)
     try {
-      run = await subagents.start('spawn', {
+      run = await subagents.start(provider, {
         label: 'plan-ask',
-        prompt: [{ type: 'text', text: buildAskAiPrompt(request) }],
+        prompt: [{ type: 'text', text: buildAskAiPrompt(request, { parentContext: provider === 'fork' }) }],
         parent,
         signal,
         toolFilter: { allow: probeReadOnlyTools(parent) },

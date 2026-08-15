@@ -105,7 +105,9 @@ produce a revised proposal.
 Select plan text and choose **✦ Ask AI** (or open the **Ask AI** tab directly
 for a general question). The question travels with the plan text, the quoted
 excerpt, and your earlier Q&A to a one-shot subagent of the reviewed session —
-same model, same workspace — that can inspect the repository with read-only
+a fork that inherits the same model, workspace, **and earlier conversation
+turns** (the plan itself always rides along verbatim, since it was submitted in
+the still-open review turn) — that can inspect the repository with read-only
 tools (`read`, `grep`, `glob`, `web_search`, `web_fetch`, probed against the
 session's actual tool set). The answer renders inline as Markdown; follow-up
 questions keep the thread's context, and **Stop** cancels a slow answer. The
@@ -219,9 +221,11 @@ must be correct before the first edit:
 - The Ask AI channel is a loopback/trusted-host RPC channel (`/dsh-plannotator`)
   on DSH's shared Connection transport. Each question runs as a one-shot
   subagent (labelled `plan-ask`, visible in the session's subagent list) that
-  inherits the reviewed session's model and composition under a read-only tool
-  filter. Answers are unary (no streaming yet), and the Q&A thread lives only
-  in the open panel — it is not persisted like annotation drafts.
+  forks the reviewed session — inheriting its model, composition, and completed
+  conversation turns — under a read-only tool filter (a composition without the
+  fork provider falls back to a fresh child). Answers are unary (no streaming
+  yet), and the Q&A thread lives only in the open panel — it is not persisted
+  like annotation drafts.
 - Feedback travels through DSH's existing response channel. No third-party
   service or telemetry is used.
 

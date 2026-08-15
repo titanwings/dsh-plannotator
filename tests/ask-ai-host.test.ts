@@ -57,12 +57,16 @@ test('buildAskAiPrompt assembles plan, history, quote, and question', () => {
     quote: 'QUOTE_TEXT',
     history: [{ question: 'EARLIER_Q', answer: 'EARLIER_A' }],
   }
-  const prompt = buildAskAiPrompt(request)
+  const prompt = buildAskAiPrompt(request, { parentContext: false })
   assert.ok(prompt.indexOf('<plan>\nPLAN_TEXT\n</plan>') >= 0)
   assert.ok(prompt.indexOf('Q1: EARLIER_Q') >= 0)
   assert.ok(prompt.indexOf('A1: EARLIER_A') >= 0)
   assert.ok(prompt.indexOf('<quote>\nQUOTE_TEXT\n</quote>') >= 0)
   assert.ok(prompt.endsWith('Question: QUESTION_TEXT'))
+
+  const forked = buildAskAiPrompt(request, { parentContext: true })
+  assert.match(forked, /You wrote the implementation plan/)
+  assert.match(forked, /earlier completed conversation turns/)
 })
 
 interface FakeParent {
@@ -118,6 +122,7 @@ function handlerFixture(options: {
   readonly agents?: unknown
   readonly subagents?: unknown
   readonly unknownTools?: readonly string[]
+  readonly withFork?: boolean
 }) {
   const { parent } = fakeParent(options.unknownTools ?? [])
   const starts: StartCapture[] = []
@@ -137,6 +142,8 @@ function handlerFixture(options: {
         if (options.startError !== undefined) throw options.startError
         return run
       },
+      getProvider: (name: string): unknown =>
+        name === 'spawn' || (name === 'fork' && options.withFork !== false) ? {} : undefined,
     }
   const agents = 'agents' in options
     ? options.agents
@@ -186,14 +193,23 @@ test('handler starts a read-only one-shot child and returns its answer', async (
   assert.equal(starts.length, 1)
   const start = starts[0]
   assert.ok(start)
-  assert.equal(start.name, 'spawn')
+  assert.equal(start.name, 'fork')
   assert.equal(start.request.label, 'plan-ask')
   assert.deepEqual(start.request.toolFilter.allow, ['read', 'grep', 'glob', 'web_search'])
   assert.match(start.request.persona, /read-only/)
+  assert.match(start.request.prompt[0]?.text ?? '', /You wrote the implementation plan/)
   assert.match(start.request.prompt[0]?.text ?? '', /Ship safely\./)
   assert.match(start.request.prompt[0]?.text ?? '', /Earlier answer\./)
   assert.match(start.request.prompt[0]?.text ?? '', /Why is the migration lazy\?/)
   assert.equal(disposed(), 1)
+})
+
+test('handler falls back to a fresh spawn child when no fork provider is registered', async () => {
+  const { handler, starts } = handlerFixture({ withFork: false })
+  const result = await handler('ask', validPayload(), signal())
+  assert.equal(result.ok, true)
+  assert.equal(starts[0]?.name, 'spawn')
+  assert.match(starts[0]?.request.prompt[0]?.text ?? '', /The user is reviewing the implementation plan/)
 })
 
 test('handler maps a startup failure to an internal error without a run to dispose', async () => {

@@ -52,6 +52,42 @@ interface AgentLike {
         get(name: string): unknown;
     };
 }
+interface SubagentRunLike {
+    readonly result: Promise<{
+        readonly stopReason: string;
+        readonly output: readonly {
+            readonly type: string;
+            readonly text?: string;
+        }[];
+    }>;
+    dispose(): Promise<void>;
+}
+interface SubagentsLike {
+    start(name: string, request: {
+        readonly label: string;
+        readonly prompt: readonly {
+            readonly type: 'text';
+            readonly text: string;
+        }[];
+        readonly parent: AgentLike;
+        readonly signal: AbortSignal;
+        readonly toolFilter: {
+            readonly allow: readonly string[];
+        };
+        readonly persona: string;
+    }): Promise<SubagentRunLike>;
+    /** Optional registry probe used to prefer the context-inheriting provider. */
+    getProvider?(name: string): unknown;
+}
+/**
+ * Provider preference: `fork` seeds the child with the parent's completed-turn
+ * prefix — the earlier requirements, exploration, and discussion that explain
+ * the plan. The plan itself sits in the parent's uncompleted current turn
+ * (blocked on the review wait), so it always rides in the prompt verbatim.
+ * A composition without `fork` degrades to `spawn`; one without either fails
+ * loud at `start`.
+ */
+export declare function chooseProvider(subagents: SubagentsLike): 'fork' | 'spawn';
 interface ConnectionLike {
     readonly rpc: {
         handle(channel: string, handler: (endpoint: string, payload: unknown, signal: AbortSignal) => Promise<AskAiRpcResult>, options: {
@@ -74,8 +110,15 @@ type ParseResult = {
 };
 /** Validate and bound the wire payload; over-length plans are truncated with a visible marker. */
 export declare function parseAskAiRequest(payload: unknown): ParseResult;
-/** Assemble the single user message of the one-shot child (a spawned child sees no parent context). */
-export declare function buildAskAiPrompt(request: AskAiRequest): string;
+/**
+ * Assemble the single user message of the one-shot child. With `parentContext`
+ * the child is a fork seeded with the parent's completed turns; the intro then
+ * explains that the plan is quoted because it was submitted in the current,
+ * not-yet-complete turn.
+ */
+export declare function buildAskAiPrompt(request: AskAiRequest, options: {
+    readonly parentContext: boolean;
+}): string;
 /**
  * Keep the read-only candidates that actually exist in the parent scope.
  * `restrict` is validated synchronously and lifted at once; an unknown name
