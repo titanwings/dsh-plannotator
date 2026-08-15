@@ -10,6 +10,7 @@ import {
   type AskAiHistoryEntry,
   type AskAiRequest,
 } from '../shared/limits.js'
+import { newId } from '../shared/id.js'
 
 // The wire contract (budgets, channel/endpoint names, request types) is
 // defined once in ../shared/limits.ts and re-exported here so callers of this
@@ -25,12 +26,6 @@ export class AskAiError extends Error {
     super(message)
     this.name = 'AskAiError'
   }
-}
-
-function randomId(): string {
-  return typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `ask-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
 function isResult(value: unknown): value is RpcResult<unknown> {
@@ -57,7 +52,7 @@ function unwrap(result: RpcResult<unknown>): string {
 }
 
 async function callViaFetch(request: AskAiRequest, signal: AbortSignal): Promise<string> {
-  const rpcId = randomId()
+  const rpcId = newId('ask')
   const response = await fetch(`${ASK_AI_CHANNEL}/${ASK_AI_ENDPOINT}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

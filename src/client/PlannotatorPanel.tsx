@@ -22,6 +22,7 @@ import {
   type SelectionAnchor,
 } from './selection.js'
 import { panelModeForWidth, type PanelMode } from './layout.js'
+import { newId } from '../shared/id.js'
 
 interface Copy {
   header: string
@@ -120,12 +121,6 @@ function draftKey(wait: QuestionWait): string {
   return `dsh-plannotator:draft:v1:${wait.sessionId}:${wait.key}`
 }
 
-function annotationId(): string {
-  return typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `annotation-${Date.now()}-${Math.random().toString(16).slice(2)}`
-}
-
 function readDraft(key: string): string | null {
   try { return localStorage.getItem(key) } catch { return null }
 }
@@ -189,6 +184,20 @@ function PlannotatorReview({
   const launcherRef = useRef<HTMLButtonElement>(null)
   const panelTitleRef = useRef<HTMLHeadingElement>(null)
 
+  /** Clear the staged annotation selection, its comment box, and the native selection. */
+  const clearSelection = useCallback((): void => {
+    window.getSelection()?.removeAllRanges()
+    setSelection(null)
+    setComment('')
+  }, [])
+
+  /** Adopt a freshly captured selection, resetting the comment draft and the approve-confirm gate. */
+  const adoptSelection = useCallback((next: SelectionAnchor): void => {
+    setSelection(next)
+    setComment('')
+    setConfirmApprove(false)
+  }, [])
+
   useEffect(() => {
     if (annotations.length === 0 && general.trim() === '') {
       removeDraft(storageKey)
@@ -214,19 +223,15 @@ function PlannotatorReview({
   useEffect(() => {
     if (previousMode.current === mode) return
     previousMode.current = mode
-    window.getSelection()?.removeAllRanges()
-    setSelection(null)
-    setComment('')
-  }, [mode])
+    clearSelection()
+  }, [mode, clearSelection])
 
   const openPanel = (): void => {
     setOpenByMode(current => ({ ...current, [mode]: true }))
     requestAnimationFrame(() => { panelTitleRef.current?.focus() })
   }
   const closePanel = (): void => {
-    window.getSelection()?.removeAllRanges()
-    setSelection(null)
-    setComment('')
+    clearSelection()
     setOpenByMode(current => ({ ...current, [mode]: false }))
     requestAnimationFrame(() => { launcherRef.current?.focus() })
   }
@@ -236,9 +241,7 @@ function PlannotatorReview({
     if (root === null) return
     const next = selectionAnchor(root)
     if (next !== undefined) {
-      setSelection(next)
-      setComment('')
-      setConfirmApprove(false)
+      adoptSelection(next)
     }
   }, [])
 
@@ -249,9 +252,7 @@ function PlannotatorReview({
     if (!(block instanceof HTMLElement)) return
     const next = elementAnchor(root, block)
     if (next === undefined) return
-    setSelection(next)
-    setComment('')
-    setConfirmApprove(false)
+    adoptSelection(next)
   }
 
   const repositionSelection = (): void => {
@@ -287,7 +288,7 @@ function PlannotatorReview({
   const addComment = (): void => {
     if (selection === null || comment.trim() === '') return
     setAnnotations(current => [...current, {
-      id: annotationId(),
+      id: newId('annotation'),
       start: selection.start,
       end: selection.end,
       quote: selection.quote,
@@ -296,18 +297,14 @@ function PlannotatorReview({
       comment: comment.trim(),
       createdAt: Date.now(),
     }])
-    window.getSelection()?.removeAllRanges()
-    setSelection(null)
-    setComment('')
+    clearSelection()
   }
 
   /** Move the current selection into the always-visible Ask AI composer as a quoted excerpt. */
   const beginAsk = (): void => {
     if (selection === null) return
     setAskQuote(selection.quote)
-    window.getSelection()?.removeAllRanges()
-    setSelection(null)
-    setComment('')
+    clearSelection()
   }
 
   const sendAsk = (): void => {

@@ -15,6 +15,7 @@ import {
   MAX_QUESTION_CHARS,
   MAX_QUOTE_CHARS,
 } from '../shared/limits.js'
+import { newId } from '../shared/id.js'
 
 // Payload budgets come from the shared wire contract (../shared/limits.ts) —
 // the same numbers the Host validates on receipt — and values are sliced
@@ -77,12 +78,6 @@ function readStored(key: string): AskEntry[] | undefined {
   } catch {
     return undefined
   }
-}
-
-function entryId(): string {
-  return typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `ask-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
 function buildHistory(entries: readonly AskEntry[], excludeId?: string): { question: string; answer: string }[] {
@@ -208,7 +203,7 @@ export function useAskThread(
     const question = input.question.trim().slice(0, MAX_QUESTION_CHARS)
     if (question === '') return false
     const entry: AskEntry = {
-      id: entryId(),
+      id: newId('ask'),
       ...(input.quote !== null ? { quote: input.quote.slice(0, MAX_QUOTE_CHARS) } : {}),
       question,
       answer: '',
