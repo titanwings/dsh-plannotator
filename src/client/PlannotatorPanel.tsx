@@ -409,8 +409,10 @@ function PlannotatorReview({
               onMouseDown={(event: MouseEvent) => { event.preventDefault() }}
             >
               {/* The annotations view is always active; keep the selection so the
-                  new-comment box below stays open on the quoted text. */}
-              <button type="button" onClick={() => { setComment('') }}>
+                  new-comment box below stays open on the quoted text. The action
+                  only directs focus to that box — it must never clear a typed
+                  draft (clearing is the selection capture's job). */}
+              <button type="button" onClick={() => { commentRef.current?.focus() }}>
                 ＋ {copy.commentButton}
               </button>
               <button type="button" onClick={beginAsk}>

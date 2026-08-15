@@ -331,6 +331,27 @@ test('creates an annotation, updates its floating action on scroll, and exposes 
   await React.act(async () => { view.root.unmount() })
 })
 
+test('keeps a typed comment when the floating annotation action is clicked', async () => {
+  const view = await renderReview()
+  const paragraph = dom.window.document.querySelector('[data-plannotator-document] p')
+  assert.ok(paragraph)
+  await React.act(async () => {
+    paragraph.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true }))
+  })
+  const comment = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-comment"]')
+  assert.ok(comment)
+  await React.act(async () => { setTextareaValue(comment, 'Keep this compatibility guarantee explicit.') })
+  const floating = dom.window.document.querySelector<HTMLElement>('.dsh-plannotator-selection-action button')
+  assert.ok(floating)
+  await click(floating)
+  // The floating action only directs focus to the new-comment box for the
+  // active selection; it must never wipe a typed draft.
+  assert.equal(comment.value, 'Keep this compatibility guarantee explicit.')
+  assert.ok(dom.window.document.querySelector('[id$="-comment"]'))
+  assert.equal([...dom.window.document.querySelectorAll('button')].some(button => button.textContent === '#1'), false)
+  await React.act(async () => { view.root.unmount() })
+})
+
 test('keeps draft and highlights across dock collapse and reopen', async () => {
   const view = await renderReview()
   const paragraph = dom.window.document.querySelector('[data-plannotator-document] p')
