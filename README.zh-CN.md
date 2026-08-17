@@ -94,6 +94,19 @@ DSH 已有响应流程，以结构化 Markdown 送回 Agent；Agent 留在 Plan 
 每一条修改要求和整体意见记录在 tool result 与 Session Log 中。Agent 会继续留在
 Plan mode，并可以立刻给出修订版方案。
 
+### 就计划内容问 AI
+
+选中计划原文后点击 **✦ 问 AI** 引用摘录，或直接在 plan 预览**左侧常驻的「问 AI」侧栏**
+里提问。问题会连同计划全文、引用摘录和此前的问答记录，一起发送给被审阅会话的一个
+一次性子 Agent——它是该会话的一个 fork，继承同模型、同工作区**以及此前的对话轮次**
+（计划本身总是随问题逐字携带，因为它提交于尚未结束的本轮）——可以用只读工具
+（`read`、`grep`、`glob`、`web_search`、`web_fetch`，按会话实际工具集逐个探测）
+查看仓库后再回答。回答以 Markdown 内联渲染；追问会保留上下文，**停止** 可以
+中止过慢的回答。问答线程会保存在浏览器本地（与批注草稿同级别），切进回答中的
+子 Agent 再回来、或刷新页面后仍然保留——进行中的回答在返回后依然会落地。
+**停止**会直接移除待回答的问题；而 Host 侧的取消会保留为带重试按钮的错误条目，
+不会无声消失。负责回答的子 Agent 不会修改任何文件、不会改写计划，也不能继续委托。
+
 ### 保护尚未完成的审阅
 
 未发送的意见会保存在当前浏览器本地，并按 Session、待处理请求和计划版本隔离。
@@ -107,6 +120,7 @@ Plan mode，并可以立刻给出修订版方案。
 | 多意见审阅 | 原文锚点、来源跳转、删除与整体意见 |
 | 响应式审阅栏 | 宽屏并排、中等宽度按需抽屉、手机端底部面板 |
 | DSH 响应闭环 | 通过现有 pending interaction 批准、要求修改或回到聊天 |
+| 问 AI | 由一次性只读子 Agent 回答计划问题，支持引用摘录、多轮追问与中止 |
 | 草稿恢复 | 无插件服务器、无第三方服务的本地尽力恢复 |
 | 审阅保护 | 拒绝过期计划草稿；丢弃未发送意见前必须明确确认 |
 | 界面适配 | 中英文文案、键盘快捷键、响应式布局与 DSH 主题变量 |
@@ -120,7 +134,7 @@ Plan mode，并可以立刻给出修订版方案。
 把 GitHub bundle 安装到 DSH Web profile，然后重启 `dsh web`：
 
 ```bash
-dsh plugin --profile web add github:titanwings/dsh-plannotator#v0.1.3
+dsh plugin --profile web add github:titanwings/dsh-plannotator#v0.1.4
 ```
 
 仓库已随附构建完成的 Host 与 Web bundle，因此安装时不会运行包构建脚本，
@@ -188,15 +202,22 @@ pnpm dsh plugin --profile web add /path/to/dsh-plannotator
 - 该面板由插件自身提供，不是 DSH core 的 `details` 面板。插件只在稳定的 Web
   `#root` 挂载边界旁预留空间，让 AppFrame 正常重排，不向 core details grid
   注册内容，也不改写它的列定义。
-- 不使用自定义 Host route、第三方服务或遥测；反馈走 DSH 现有响应通道。
+- 问 AI 走 DSH 共享 Connection 传输上的一个 loopback/trusted-host RPC 通道
+  （`/dsh-plannotator`）。每个问题都会以一次性子 Agent 运行（标记为 `plan-ask`，
+  会出现在会话的 subagent 列表中），它 fork 被审阅会话，在只读工具过滤下继承其模型、
+  组合与已完成的对话轮次（没有 fork provider 的组合，或其 fork 缺少所需的只读工具过滤/
+  persona 能力，会退化为全新子 Agent）。
+  回答是单次的（暂不支持流式），且最长约 32k 字符、超出部分截断以保证能作为追问上下文
+  往返；问答线程按审阅保存在本地存储中，面板导航与刷新后依然保留（不像批注草稿会拒绝过期计划）。
+- 反馈走 DSH 现有响应通道；不使用第三方服务或遥测。
 
 <details>
 <summary>它如何遵循 DSH 的 Cordis 架构</summary>
 
-这个 bundle 只插入一条 Cordis Loader row。Host 入口有意保持 no-op；
-`package.json#dsh.client` 暴露 Web bundle。Client 注册自己的 locale namespace，
-并在优先级 `-10` 注册一条 `conversation.composer` chain entry，只选择 Plan
-Review 请求，排在默认问题渲染器之前。这个 contribution 负责渲染紧凑入口，
+这个 bundle 只插入一条 Cordis Loader row。Host 入口只在共享 Connection 传输上
+注册问 AI 的 RPC 通道；`package.json#dsh.client` 暴露 Web bundle。Client 注册自己的
+locale namespace，并在优先级 `-10` 注册一条 `conversation.composer` chain entry，
+只选择 Plan Review 请求，排在默认问题渲染器之前。这个 contribution 负责渲染紧凑入口，
 并通过 React portal 挂载插件自有的审阅面板。宽屏会在稳定的 Web root 旁预留
 同等宽度，较窄布局则复用同一个面板作为按需抽屉或底部面板。
 
