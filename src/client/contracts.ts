@@ -55,8 +55,22 @@ export interface SlotRegistrationOptions {
   readonly select: (props: ComposerChainProps) => QuestionWait | null
 }
 
+/** Generic Connection RPC result (`{ ok, value | error }`) as the client receives it. */
+export type RpcResult<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly error: { readonly code: string; readonly message: string } }
+
+/** Minimal face of `ctx.connection` (dsh-client-connection) used by Ask AI. */
+export interface ConnectionLike {
+  readonly rpc: {
+    call(channel: string, endpoint: string, payload: unknown, signal?: AbortSignal): Promise<RpcResult<unknown>>
+  }
+}
+
 export interface ClientContext {
   effect(factory: () => void | (() => void), label?: string): void
+  /** Optional service lookup (Cordis `ctx.get`); absent services return undefined. */
+  get(name: string): unknown
   locale: {
     register(
       namespace: string,

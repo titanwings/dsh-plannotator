@@ -1,0 +1,228 @@
+/**
+ * Ask AI thread store: the Q&A thread lives at module scope so it survives
+ * panel unmounts (navigating into the answering subagent) and page reloads.
+ * In-flight requests are owned here too, so an answer that lands while the
+ * panel is closed still updates the thread; the panel subscribes through
+ * useSyncExternalStore.
+ */
+import { useCallback, useMemo, useSyncExternalStore } from 'react'
+import { AskAiError, callAskAi } from './ask-ai.js'
+import type { AskEntry } from './AskAISection.js'
+import {
+  MAX_HISTORY_ANSWER_CHARS,
+  MAX_HISTORY_ENTRIES,
+  MAX_HISTORY_QUESTION_CHARS,
+  MAX_QUESTION_CHARS,
+  MAX_QUOTE_CHARS,
+} from '../shared/limits.js'
+import { newId } from '../shared/id.js'
+
+// Payload budgets come from the shared wire contract (../shared/limits.ts) —
+// the same numbers the Host validates on receipt — and values are sliced
+// before sending so an over-long value can never fail once and then keep
+// failing on Retry.
+
+/** localStorage key for one review's Ask AI thread. */
+export function askThreadKey(wait: { readonly sessionId: string; readonly key: string }): string {
+  return `dsh-plannotator:ask:v1:${wait.sessionId}:${wait.key}`
+}
+
+interface ScopeState {
+  readonly key: string
+  entries: AskEntry[]
+  /**
+   * In-flight request gate: non-null exactly while one pending entry exists.
+   * `busy` derives from `entries`, so every path that touches this controller
+   * (including any future timeout/cancel) must commit the matching entries
+   * change in the same step — otherwise the send gate and the button states
+   * desync.
+   */
+  controller: AbortController | null
+}
+
+const scopes = new Map<string, ScopeState>()
+const listeners = new Set<() => void>()
+
+function notify(): void {
+  for (const listener of listeners) listener()
+}
+
+export function subscribeAskThread(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
+}
+
+function persist(key: string, entries: readonly AskEntry[]): void {
+  try {
+    localStorage.setItem(key, JSON.stringify({ entries }))
+  } catch {
+    // Thread recovery is best-effort, like annotation drafts.
+  }
+}
+
+function isEntry(value: unknown): value is AskEntry {
+  if (value === null || typeof value !== 'object') return false
+  const entry = value as { id?: unknown; question?: unknown; status?: unknown }
+  return typeof entry.id === 'string'
+    && typeof entry.question === 'string'
+    && (entry.status === 'pending' || entry.status === 'done' || entry.status === 'error')
+}
+
+function readStored(key: string): AskEntry[] | undefined {
+  try {
+    const raw = localStorage.getItem(key)
+    if (raw === null) return undefined
+    const parsed = JSON.parse(raw) as { entries?: unknown }
+    if (!Array.isArray(parsed.entries)) return undefined
+    return parsed.entries.filter(isEntry)
+  } catch {
+    return undefined
+  }
+}
+
+function buildHistory(entries: readonly AskEntry[], excludeId?: string): { question: string; answer: string }[] {
+  return entries
+    .filter(entry => entry.status === 'done' && entry.id !== excludeId)
+    .map(entry => ({
+      question: entry.question.slice(0, MAX_HISTORY_QUESTION_CHARS),
+      answer: entry.answer.slice(0, MAX_HISTORY_ANSWER_CHARS),
+    }))
+    .slice(-MAX_HISTORY_ENTRIES)
+}
+
+function scopeOf(key: string, cancelledCopy: string): ScopeState {
+  const existing = scopes.get(key)
+  if (existing !== undefined) return existing
+  const stored = readStored(key)
+  // A pending entry restored from storage has no live request behind it (a
+  // reload kills every fetch and the host cancels the child), so surface it
+  // as cancelled instead of hanging forever.
+  const entries = (stored ?? []).map(entry =>
+    entry.status === 'pending'
+      ? { ...entry, status: 'error' as const, error: cancelledCopy }
+      : entry)
+  const scope: ScopeState = { key, entries, controller: null }
+  scopes.set(key, scope)
+  return scope
+}
+
+function commit(scope: ScopeState, entries: AskEntry[]): void {
+  // A scope removed by forgetAskThread is inert: late async callbacks from an
+  // in-flight request must not resurrect its storage key or touch dead UI.
+  if (scopes.get(scope.key) !== scope) return
+  scope.entries = entries
+  persist(scope.key, entries)
+  notify()
+}
+
+/**
+ * Forget one review's Ask AI thread once the review settles (approve /
+ * request-changes / dismiss): release the in-memory scope and its storage key.
+ * The in-flight request is aborted; a removed scope is inert, so an answer
+ * that lands afterwards cannot resurrect the thread.
+ */
+export function forgetAskThread(wait: { readonly sessionId: string; readonly key: string }): void {
+  const key = askThreadKey(wait)
+  const scope = scopes.get(key)
+  if (scope !== undefined) {
+    // Delete before aborting: abort fires synchronously and its rejection path
+    // commits, which the inert-scope guard must already see as removed.
+    scopes.delete(key)
+    scope.controller?.abort()
+  }
+  try { localStorage.removeItem(key) } catch { /* Thread removal is best-effort. */ }
+  notify()
+}
+
+function startAsk(
+  scope: ScopeState,
+  wait: { readonly sessionId: string },
+  plan: string,
+  entry: AskEntry,
+  cancelledCopy: string,
+  replace: boolean,
+): void {
+  if (scope.controller !== null) return
+  const controller = new AbortController()
+  scope.controller = controller
+  commit(scope, replace
+    ? scope.entries.map(item => (item.id === entry.id ? entry : item))
+    : [...scope.entries, entry])
+  const history = buildHistory(scope.entries, entry.id)
+  void callAskAi({
+    sessionId: wait.sessionId,
+    plan,
+    question: entry.question,
+    ...(entry.quote !== undefined ? { quote: entry.quote } : {}),
+    history,
+  }, controller.signal).then(answer => {
+    commit(scope, scope.entries.map(item =>
+      item.id === entry.id ? { ...item, status: 'done' as const, answer } : item))
+  }).catch((cause: unknown) => {
+    // controller.signal.aborted is the user's own Stop (or teardown); a host
+    // `cancelled` error arrives with the signal still un-aborted and must
+    // surface as a visible entry instead of silently vanishing.
+    if (controller.signal.aborted) {
+      commit(scope, scope.entries.filter(item => item.id !== entry.id))
+      return
+    }
+    const message = cause instanceof AskAiError && cause.code === 'cancelled'
+      ? cancelledCopy
+      : cause instanceof Error ? cause.message : String(cause)
+    commit(scope, scope.entries.map(item =>
+      item.id === entry.id ? { ...item, status: 'error' as const, error: message } : item))
+  }).finally(() => {
+    if (scope.controller === controller) scope.controller = null
+    notify()
+  })
+}
+
+/** Panel-facing thread handle bound to one review scope. */
+export interface AskThreadHandle {
+  readonly entries: readonly AskEntry[]
+  readonly busy: boolean
+  /** Send one question; false when rejected (busy or empty after trim). */
+  readonly send: (input: { readonly question: string; readonly quote: string | null }) => boolean
+  readonly retry: (entry: AskEntry) => void
+  readonly stop: () => void
+}
+
+export function useAskThread(
+  wait: { readonly sessionId: string; readonly key: string },
+  plan: string,
+  cancelledCopy: string,
+): AskThreadHandle {
+  const key = askThreadKey(wait)
+  const scope = useMemo(() => scopeOf(key, cancelledCopy), [key, cancelledCopy])
+  const entries = useSyncExternalStore(
+    subscribeAskThread,
+    useCallback(() => scope.entries, [scope]),
+  )
+  const send = useCallback((input: { readonly question: string; readonly quote: string | null }): boolean => {
+    if (scope.controller !== null) return false
+    const question = input.question.trim().slice(0, MAX_QUESTION_CHARS)
+    if (question === '') return false
+    const entry: AskEntry = {
+      id: newId('ask'),
+      ...(input.quote !== null ? { quote: input.quote.slice(0, MAX_QUOTE_CHARS) } : {}),
+      question,
+      answer: '',
+      status: 'pending',
+    }
+    startAsk(scope, wait, plan, entry, cancelledCopy, false)
+    return true
+  }, [scope, wait, plan, cancelledCopy])
+  const retry = useCallback((entry: AskEntry): void => {
+    if (scope.controller !== null) return
+    const pending: AskEntry = {
+      id: entry.id,
+      ...(entry.quote !== undefined ? { quote: entry.quote.slice(0, MAX_QUOTE_CHARS) } : {}),
+      question: entry.question.slice(0, MAX_QUESTION_CHARS),
+      answer: '',
+      status: 'pending',
+    }
+    startAsk(scope, wait, plan, pending, cancelledCopy, true)
+  }, [scope, wait, plan, cancelledCopy])
+  const stop = useCallback((): void => { scope.controller?.abort() }, [scope])
+  return { entries, busy: entries.some(entry => entry.status === 'pending'), send, retry, stop }
+}

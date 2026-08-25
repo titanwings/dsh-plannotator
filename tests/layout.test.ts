@@ -28,6 +28,6 @@ test('keeps CSS media geometry aligned with the runtime boundary contract', asyn
   assert.match(styles, /@media\(min-width:1480px\)/)
   assert.match(styles, /@media\(max-width:1479px\)/)
   assert.match(styles, /@media\(max-width:640px\)/)
-  assert.match(styles, /width:calc\(100% - clamp\(440px,28vw,560px\)\)/)
+  assert.match(styles, /width:calc\(100% - clamp\(560px,40vw,760px\)\)/)
   assert.match(styles, /width:calc\(100% - 44px\)/)
 })

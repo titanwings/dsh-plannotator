@@ -7,6 +7,8 @@ import {
   Button, IconChevronLeftOutline14, IconChevronRightOutline14, IconEditOutline16, MarkdownText,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { QuestionWait, Translate } from './contracts.js'
+import { AskAISection, type AskCopy, type AskEntry } from './AskAISection.js'
+import { forgetAskThread, useAskThread } from './ask-thread.js'
 import {
   parseStoredDraft, planRevision, renderPlanFeedback,
   type PlanAnnotation,
@@ -20,6 +22,7 @@ import {
   type SelectionAnchor,
 } from './selection.js'
 import { panelModeForWidth, type PanelMode } from './layout.js'
+import { newId } from '../shared/id.js'
 
 interface Copy {
   header: string
@@ -45,6 +48,10 @@ interface Copy {
   delete: (number: number) => string
   goTo: (number: number) => string
   shortcut: string
+  askTab: string
+  askButton: string
+  askCancelled: string
+  ask: AskCopy
 }
 
 function readPanelMode(): PanelMode {
@@ -94,17 +101,24 @@ function copyOf(t: Translate): Copy {
     delete: number => t('delete', { number }),
     goTo: number => t('goTo', { number }),
     shortcut: t('shortcut'),
+    askTab: t('askTab'),
+    askButton: t('askButton'),
+    askCancelled: t('askCancelled'),
+    ask: {
+      label: t('askTab'),
+      placeholder: t('askPlaceholder'),
+      send: t('askSend'),
+      stop: t('askStop'),
+      retry: t('askRetry'),
+      empty: t('askEmpty'),
+      clearQuote: t('askClearQuote'),
+      answering: t('askAnswering'),
+    },
   }
 }
 
 function draftKey(wait: QuestionWait): string {
   return `dsh-plannotator:draft:v1:${wait.sessionId}:${wait.key}`
-}
-
-function annotationId(): string {
-  return typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `annotation-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
 function readDraft(key: string): string | null {
@@ -148,6 +162,10 @@ function PlannotatorReview({
   const [general, setGeneral] = useState(restored?.general ?? '')
   const [selection, setSelection] = useState<SelectionAnchor | null>(null)
   const [comment, setComment] = useState('')
+  const [commentAttention, setCommentAttention] = useState(false)
+  const [askDraft, setAskDraft] = useState('')
+  const [askQuote, setAskQuote] = useState<string | null>(null)
+  const askThread = useAskThread(matched, review.plan, copy.askCancelled)
   const [busy, setBusy] = useState<'approve' | 'feedback' | 'dismiss' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [confirmApprove, setConfirmApprove] = useState(false)
@@ -162,8 +180,23 @@ function PlannotatorReview({
   const panelId = `dsh-plannotator-panel-${useId().replaceAll(':', '')}`
   const documentRef = useRef<HTMLDivElement>(null)
   const commentRef = useRef<HTMLTextAreaElement>(null)
+  const attentionTimer = useRef<number | null>(null)
   const launcherRef = useRef<HTMLButtonElement>(null)
   const panelTitleRef = useRef<HTMLHeadingElement>(null)
+
+  /** Clear the staged annotation selection, its comment box, and the native selection. */
+  const clearSelection = useCallback((): void => {
+    window.getSelection()?.removeAllRanges()
+    setSelection(null)
+    setComment('')
+  }, [])
+
+  /** Adopt a freshly captured selection, resetting the comment draft and the approve-confirm gate. */
+  const adoptSelection = useCallback((next: SelectionAnchor): void => {
+    setSelection(next)
+    setComment('')
+    setConfirmApprove(false)
+  }, [])
 
   useEffect(() => {
     if (annotations.length === 0 && general.trim() === '') {
@@ -183,22 +216,22 @@ function PlannotatorReview({
     if (selection !== null) commentRef.current?.focus()
   }, [selection])
 
+  useEffect(() => () => {
+    if (attentionTimer.current !== null) window.clearTimeout(attentionTimer.current)
+  }, [])
+
   useEffect(() => {
     if (previousMode.current === mode) return
     previousMode.current = mode
-    window.getSelection()?.removeAllRanges()
-    setSelection(null)
-    setComment('')
-  }, [mode])
+    clearSelection()
+  }, [mode, clearSelection])
 
   const openPanel = (): void => {
     setOpenByMode(current => ({ ...current, [mode]: true }))
     requestAnimationFrame(() => { panelTitleRef.current?.focus() })
   }
   const closePanel = (): void => {
-    window.getSelection()?.removeAllRanges()
-    setSelection(null)
-    setComment('')
+    clearSelection()
     setOpenByMode(current => ({ ...current, [mode]: false }))
     requestAnimationFrame(() => { launcherRef.current?.focus() })
   }
@@ -208,9 +241,7 @@ function PlannotatorReview({
     if (root === null) return
     const next = selectionAnchor(root)
     if (next !== undefined) {
-      setSelection(next)
-      setComment('')
-      setConfirmApprove(false)
+      adoptSelection(next)
     }
   }, [])
 
@@ -221,9 +252,7 @@ function PlannotatorReview({
     if (!(block instanceof HTMLElement)) return
     const next = elementAnchor(root, block)
     if (next === undefined) return
-    setSelection(next)
-    setComment('')
-    setConfirmApprove(false)
+    adoptSelection(next)
   }
 
   const repositionSelection = (): void => {
@@ -243,10 +272,23 @@ function PlannotatorReview({
     if (event.key === 'Shift' || event.shiftKey) captureSelection()
   }
 
+  /** Bring the new-comment box for the active selection into view and focus it. */
+  const focusComment = (): void => {
+    const box = commentRef.current
+    if (box !== null) {
+      const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+      box.scrollIntoView({ block: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' })
+      box.focus()
+    }
+    setCommentAttention(true)
+    if (attentionTimer.current !== null) window.clearTimeout(attentionTimer.current)
+    attentionTimer.current = window.setTimeout(() => { setCommentAttention(false) }, 600)
+  }
+
   const addComment = (): void => {
     if (selection === null || comment.trim() === '') return
     setAnnotations(current => [...current, {
-      id: annotationId(),
+      id: newId('annotation'),
       start: selection.start,
       end: selection.end,
       quote: selection.quote,
@@ -255,16 +297,36 @@ function PlannotatorReview({
       comment: comment.trim(),
       createdAt: Date.now(),
     }])
-    window.getSelection()?.removeAllRanges()
-    setSelection(null)
-    setComment('')
+    clearSelection()
   }
+
+  /** Move the current selection into the always-visible Ask AI composer as a quoted excerpt. */
+  const beginAsk = (): void => {
+    if (selection === null) return
+    setAskQuote(selection.quote)
+    clearSelection()
+  }
+
+  const sendAsk = (): void => {
+    // Clear the composer only when the question was actually accepted; a
+    // rejected send (busy gate) must not eat what the user typed.
+    if (askThread.send({ question: askDraft, quote: askQuote })) {
+      setAskDraft('')
+      setAskQuote(null)
+    }
+  }
+
+  const retryAsk = (entry: AskEntry): void => { askThread.retry(entry) }
+
+  const stopAsk = (): void => { askThread.stop() }
 
   const settle = (kind: 'approve' | 'feedback' | 'dismiss', send: () => Promise<void>): void => {
     setBusy(kind)
     setError(null)
     void send().then(() => {
       removeDraft(storageKey)
+      // The review is settled: release its Ask AI thread (memory + storage).
+      forgetAskThread(matched)
     }).catch((cause: unknown) => {
       setBusy(null)
       setError(cause instanceof Error ? cause.message : String(cause))
@@ -325,96 +387,125 @@ function PlannotatorReview({
       </header>
 
       <div className="dsh-plannotator-workspace">
-        <div
-          ref={documentRef}
-          className="dsh-plannotator-document"
-          data-plannotator-document=""
-          onMouseUp={captureSelection}
-          onDoubleClick={captureBlock}
-          onKeyUp={onKeyUp}
-          onScroll={repositionSelection}
-        >
-          <MarkdownText text={review.plan} />
-        </div>
+        <aside className="dsh-plannotator-ask-rail" aria-label={copy.askTab}>
+          <div className="dsh-plannotator-ask-rail-title">{copy.askTab}</div>
+          <AskAISection
+            entries={askThread.entries}
+            draft={askDraft}
+            onDraftChange={setAskDraft}
+            stagedQuote={askQuote}
+            onClearQuote={() => { setAskQuote(null) }}
+            busy={askThread.busy}
+            onSend={sendAsk}
+            onStop={stopAsk}
+            onRetry={retryAsk}
+            copy={copy.ask}
+            inputId={`${panelId}-ask`}
+          />
+        </aside>
 
-        {selection !== null && (
-          <button
-            type="button"
-            className="dsh-plannotator-selection-action"
-            style={{
-              left: Math.min(window.innerWidth - 148, Math.max(8, selection.rect.left)),
-              top: Math.min(window.innerHeight - 48, selection.rect.bottom),
-            }}
-            onMouseDown={(event: MouseEvent) => { event.preventDefault() }}
-            onClick={() => { commentRef.current?.focus() }}
+        <div className="dsh-plannotator-plan-side">
+          <div
+            ref={documentRef}
+            className="dsh-plannotator-document"
+            data-plannotator-document=""
+            onMouseUp={captureSelection}
+            onDoubleClick={captureBlock}
+            onKeyUp={onKeyUp}
+            onScroll={repositionSelection}
           >
-            ＋ {copy.commentButton}
-          </button>
-        )}
-
-        <section className="dsh-plannotator-review" aria-label={copy.annotation(annotations.length)}>
-          <div className="dsh-plannotator-review-title">
-            <span>{copy.annotation(annotations.length)}</span>
-            <span>{copy.shortcut}</span>
+            <MarkdownText text={review.plan} />
           </div>
+
           {selection !== null && (
-            <section className="dsh-plannotator-new">
-              <div className="dsh-plannotator-annotation-head"><strong>{copy.newComment}</strong></div>
-              <div className="dsh-plannotator-quote">{selection.quote}</div>
-              <label className="dsh-plannotator-visually-hidden" htmlFor={`${panelId}-comment`}>{copy.newComment}</label>
-              <textarea
-                id={`${panelId}-comment`}
-                ref={commentRef}
-                className="dsh-plannotator-textarea"
-                value={comment}
-                placeholder={copy.commentPlaceholder}
-                onChange={event => { setComment(event.target.value) }}
-                onKeyDown={event => {
-                  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') addComment()
-                  if (event.key === 'Escape') { setSelection(null); setComment('') }
-                }}
-              />
-              <div className="dsh-plannotator-mini-actions">
-                <Button size="sm" variant="ghost" onClick={() => { setSelection(null); setComment('') }}>{copy.cancel}</Button>
-                <Button size="sm" className="dsh-plannotator-blue-button" disabled={comment.trim() === ''} onClick={addComment}>{copy.add}</Button>
-              </div>
-            </section>
+            <div
+              className="dsh-plannotator-selection-action"
+              style={{
+                left: Math.min(window.innerWidth - 220, Math.max(8, selection.rect.left)),
+                top: Math.min(window.innerHeight - 48, selection.rect.bottom),
+              }}
+              onMouseDown={(event: MouseEvent) => { event.preventDefault() }}
+            >
+              {/* The annotations view is always active; keep the selection so the
+                  new-comment box below stays open on the quoted text. The action
+                  only brings that box into view and focuses it — it must never
+                  clear a typed draft (clearing is the selection capture's job)
+                  nor create an annotation (that is the Add button's job). */}
+              <button type="button" onClick={focusComment}>
+                ＋ {copy.commentButton}
+              </button>
+              <button type="button" onClick={beginAsk}>
+                ✦ {copy.askButton}
+              </button>
+            </div>
           )}
-          {annotations.map((annotation, index) => (
-            <section className="dsh-plannotator-annotation" key={annotation.id}>
-              <div className="dsh-plannotator-annotation-head">
-                <button
-                  type="button"
-                  className="dsh-plannotator-icon-button"
-                  aria-label={copy.goTo(index + 1)}
-                  onClick={() => { focusAnnotation(annotation) }}
-                >#{index + 1}</button>
-                <button
-                  type="button"
-                  className="dsh-plannotator-icon-button"
-                  aria-label={copy.delete(index + 1)}
-                  onClick={() => {
-                    setAnnotations(current => current.filter(item => item.id !== annotation.id))
-                    setConfirmApprove(false)
+
+          <section className="dsh-plannotator-review" aria-label={copy.annotation(annotations.length)}>
+            <div className="dsh-plannotator-review-title">
+              <span>{copy.annotation(annotations.length)}</span>
+              <span>{copy.shortcut}</span>
+            </div>
+            {selection !== null && (
+              <section className={commentAttention
+                ? 'dsh-plannotator-new dsh-plannotator-new-attention'
+                : 'dsh-plannotator-new'}>
+                <div className="dsh-plannotator-annotation-head"><strong>{copy.newComment}</strong></div>
+                <div className="dsh-plannotator-quote">{selection.quote}</div>
+                <label className="dsh-plannotator-visually-hidden" htmlFor={`${panelId}-comment`}>{copy.newComment}</label>
+                <textarea
+                  id={`${panelId}-comment`}
+                  ref={commentRef}
+                  className="dsh-plannotator-textarea"
+                  value={comment}
+                  placeholder={copy.commentPlaceholder}
+                  onChange={event => { setComment(event.target.value) }}
+                  onKeyDown={event => {
+                    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') addComment()
+                    if (event.key === 'Escape') { setSelection(null); setComment('') }
                   }}
-                >×</button>
-              </div>
-              <button type="button" className="dsh-plannotator-icon-button dsh-plannotator-quote" onClick={() => { focusAnnotation(annotation) }}>{annotation.quote}</button>
-              <div className="dsh-plannotator-comment">{annotation.comment}</div>
+                />
+                <div className="dsh-plannotator-mini-actions">
+                  <Button size="sm" variant="ghost" onClick={() => { setSelection(null); setComment('') }}>{copy.cancel}</Button>
+                  <Button size="sm" className="dsh-plannotator-blue-button" disabled={comment.trim() === ''} onClick={addComment}>{copy.add}</Button>
+                </div>
+              </section>
+            )}
+            {annotations.map((annotation, index) => (
+              <section className="dsh-plannotator-annotation" key={annotation.id}>
+                <div className="dsh-plannotator-annotation-head">
+                  <button
+                    type="button"
+                    className="dsh-plannotator-icon-button"
+                    aria-label={copy.goTo(index + 1)}
+                    onClick={() => { focusAnnotation(annotation) }}
+                  >#{index + 1}</button>
+                  <button
+                    type="button"
+                    className="dsh-plannotator-icon-button"
+                    aria-label={copy.delete(index + 1)}
+                    onClick={() => {
+                      setAnnotations(current => current.filter(item => item.id !== annotation.id))
+                      setConfirmApprove(false)
+                    }}
+                  >×</button>
+                </div>
+                <button type="button" className="dsh-plannotator-icon-button dsh-plannotator-quote" onClick={() => { focusAnnotation(annotation) }}>{annotation.quote}</button>
+                <div className="dsh-plannotator-comment">{annotation.comment}</div>
+              </section>
+            ))}
+            {selection === null && annotations.length === 0 && <div className="dsh-plannotator-empty">{copy.selectHint}</div>}
+            <section className="dsh-plannotator-general">
+              <label className="dsh-plannotator-annotation-head" htmlFor={`${panelId}-overall`}><strong>{copy.overall}</strong></label>
+              <textarea
+                id={`${panelId}-overall`}
+                className="dsh-plannotator-textarea"
+                value={general}
+                placeholder={copy.overallPlaceholder}
+                onChange={event => { setGeneral(event.target.value); setConfirmApprove(false) }}
+              />
             </section>
-          ))}
-          {selection === null && annotations.length === 0 && <div className="dsh-plannotator-empty">{copy.selectHint}</div>}
-          <section className="dsh-plannotator-general">
-            <label className="dsh-plannotator-annotation-head" htmlFor={`${panelId}-overall`}><strong>{copy.overall}</strong></label>
-            <textarea
-              id={`${panelId}-overall`}
-              className="dsh-plannotator-textarea"
-              value={general}
-              placeholder={copy.overallPlaceholder}
-              onChange={event => { setGeneral(event.target.value); setConfirmApprove(false) }}
-            />
           </section>
-        </section>
+        </div>
       </div>
 
       <footer className="dsh-plannotator-footer">

@@ -218,9 +218,11 @@ async function click(element: Element): Promise<void> {
   })
 }
 
-async function renderReview(width = 1600) {
+async function renderWithClient(
+  client: ClientExports,
+  width = 1600,
+): Promise<{ active: { value: 'en' | 'zh' }; client: ClientExports; container: HTMLElement; review: { wait: QuestionWait; calls: unknown[] }; root: ReturnType<typeof createRoot>; t: Translate }> {
   viewportWidth = width
-  const client = await loadClientBundle()
   const active = { value: 'en' as const } as { value: 'en' | 'zh' }
   const t = translator(active)
   const review = fixture()
@@ -231,6 +233,10 @@ async function renderReview(width = 1600) {
     root.render(React.createElement(client.PlannotatorPanel, { matched: review.wait, t }))
   })
   return { active, client, container, review, root, t }
+}
+
+async function renderReview(width = 1600) {
+  return renderWithClient(await loadClientBundle(), width)
 }
 
 async function changeViewport(width: number): Promise<void> {
@@ -322,6 +328,29 @@ test('creates an annotation, updates its floating action on scroll, and exposes 
   const jump = [...dom.window.document.querySelectorAll('button')].find(button => button.textContent === '#1')
   assert.ok(jump)
   assert.equal(jump.getAttribute('aria-label'), 'Go to annotation 1')
+  await React.act(async () => { view.root.unmount() })
+})
+
+test('keeps a typed comment when the floating annotation action is clicked', async () => {
+  const view = await renderReview()
+  const paragraph = dom.window.document.querySelector('[data-plannotator-document] p')
+  assert.ok(paragraph)
+  await React.act(async () => {
+    paragraph.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true }))
+  })
+  const comment = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-comment"]')
+  assert.ok(comment)
+  await React.act(async () => { setTextareaValue(comment, 'Keep this compatibility guarantee explicit.') })
+  const floating = dom.window.document.querySelector<HTMLElement>('.dsh-plannotator-selection-action button')
+  assert.ok(floating)
+  await click(floating)
+  // The floating action only brings the new-comment box into view and focuses
+  // it for the active selection; it must never wipe a typed draft, create an
+  // annotation, or leave the box without a visible attention cue.
+  assert.equal(comment.value, 'Keep this compatibility guarantee explicit.')
+  assert.ok(dom.window.document.querySelector('[id$="-comment"]'))
+  assert.ok(dom.window.document.querySelector('.dsh-plannotator-new-attention'))
+  assert.equal([...dom.window.document.querySelectorAll('button')].some(button => button.textContent === '#1'), false)
   await React.act(async () => { view.root.unmount() })
 })
 
@@ -446,6 +475,7 @@ test('keeps HMR-overlapping style owners alive until the last client fiber dispo
         const dispose = factory()
         if (typeof dispose === 'function') disposers.push(dispose)
       },
+      get: () => undefined,
       locale: { register: () => () => undefined },
       slots: {
         inject: (_name: string, register: () => void | (() => void)) => {
@@ -481,6 +511,7 @@ test('refreshes CSS when a newer HMR bundle reuses a refcount-aware style node',
       const dispose = factory()
       if (typeof dispose === 'function') disposers.push(dispose)
     },
+    get: () => undefined,
     locale: { register: () => () => undefined },
     slots: {
       inject: (_name: string, register: () => void | (() => void)) => {
@@ -511,6 +542,7 @@ test('replaces a legacy unowned style before an older fiber can remove it', asyn
       const dispose = factory()
       if (typeof dispose === 'function') disposers.push(dispose)
     },
+    get: () => undefined,
     locale: { register: () => () => undefined },
     slots: {
       inject: (_name: string, register: () => void | (() => void)) => {
@@ -529,4 +561,434 @@ test('replaces a legacy unowned style before an older fiber can remove it', asyn
 
   for (const dispose of disposers.reverse()) dispose()
   assert.equal(dom.window.document.getElementById('dsh-plannotator-styles'), null)
+})
+
+// ---- Ask AI ----
+
+function mockApplyCtx(connection: unknown): unknown {
+  return {
+    effect: (factory: () => void | (() => void)) => { factory() },
+    get: (name: string) => (name === 'connection' ? connection : undefined),
+    locale: { register: () => () => undefined },
+    slots: {
+      inject: (_name: string, register: () => void | (() => void)) => { register() },
+      register: () => () => undefined,
+    },
+  }
+}
+
+function findButton(text: string): HTMLElement {
+  const button = [...dom.window.document.querySelectorAll('button')]
+    .find(candidate => candidate.textContent === text)
+  assert.ok(button, `button ${text} exists`)
+  return button as HTMLElement
+}
+
+async function flush(): Promise<void> {
+  await React.act(async () => {
+    for (let index = 0; index < 6; index += 1) await Promise.resolve()
+  })
+}
+
+test('ask ai quotes the selection, sends the question, and renders the answer', async () => {
+  const view = await renderReview()
+  const calls: { channel: string; endpoint: string; payload: unknown }[] = []
+  view.client.apply(mockApplyCtx({
+    rpc: {
+      call: async (channel: string, endpoint: string, payload: unknown) => {
+        calls.push({ channel, endpoint, payload })
+        return { ok: true, value: { answer: 'Because the API must stay stable.' } }
+      },
+    },
+  }) as never)
+
+  const paragraph = dom.window.document.querySelector('[data-plannotator-document] p')
+  assert.ok(paragraph)
+  await React.act(async () => {
+    paragraph.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true }))
+  })
+  await click(findButton('✦ Ask AI'))
+
+  const chip = dom.window.document.querySelector('.dsh-plannotator-ask-quote-chip span')
+  assert.equal(chip?.textContent, 'Ship safely and keep compatibility.')
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, 'Why keep compatibility?') })
+  await click(findButton('Send'))
+  await flush()
+
+  assert.equal(calls.length, 1)
+  const call = calls[0]
+  assert.ok(call)
+  assert.equal(call.channel, '/dsh-plannotator')
+  assert.equal(call.endpoint, 'ask')
+  // The bundle runs in the jsdom realm, so compare plain data, not object identity.
+  assert.deepEqual(JSON.parse(JSON.stringify(call.payload)), {
+    sessionId: 'session-1',
+    plan: '# Plan\n\nShip safely and keep compatibility.',
+    question: 'Why keep compatibility?',
+    quote: 'Ship safely and keep compatibility.',
+    history: [],
+  })
+  assert.match(
+    dom.window.document.querySelector('.dsh-plannotator-ask-answer')?.textContent ?? '',
+    /Because the API must stay stable/,
+  )
+  await React.act(async () => { view.root.unmount() })
+})
+
+test('ask ai stops an in-flight question and drops its pending entry', async () => {
+  const view = await renderReview()
+  view.client.apply(mockApplyCtx({
+    rpc: {
+      call: (_channel: string, _endpoint: string, _payload: unknown, signal?: AbortSignal) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener('abort', () => { reject(new DOMException('aborted', 'AbortError')) })
+        }),
+    },
+  }) as never)
+
+  assert.match(dom.window.document.body.textContent ?? '', /Ask anything about this plan/)
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, 'What ships first?') })
+  await click(findButton('Send'))
+  assert.match(dom.window.document.body.textContent ?? '', /The plan Q&A agent is answering/)
+  assert.match(dom.window.document.body.textContent ?? '', /What ships first\?/)
+
+  await click(findButton('Stop'))
+  await flush()
+  assert.equal(dom.window.document.querySelector('.dsh-plannotator-ask-entry'), null)
+  assert.match(dom.window.document.body.textContent ?? '', /Ask anything about this plan/)
+  await React.act(async () => { view.root.unmount() })
+})
+
+test('ask ai surfaces host errors and retries the failed question', async () => {
+  const view = await renderReview()
+  const answers: ({ ok: false; error: { code: string; message: string } } | { ok: true; value: { answer: string } })[] = [
+    { ok: false, error: { code: 'internal', message: 'the reviewed session has no live agent' } },
+    { ok: true, value: { answer: 'Now it is alive.' } },
+  ]
+  const calls: unknown[] = []
+  view.client.apply(mockApplyCtx({
+    rpc: {
+      call: async (_channel: string, _endpoint: string, payload: unknown) => {
+        calls.push(payload)
+        return answers.shift()
+      },
+    },
+  }) as never)
+
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, 'Is the session live?') })
+  await click(findButton('Send'))
+  await flush()
+  assert.match(dom.window.document.querySelector('[role="alert"]')?.textContent ?? '', /no live agent/)
+
+  await click(findButton('Retry'))
+  await flush()
+  assert.equal(calls.length, 2)
+  assert.match(
+    dom.window.document.querySelector('.dsh-plannotator-ask-answer')?.textContent ?? '',
+    /Now it is alive/,
+  )
+  await React.act(async () => { view.root.unmount() })
+})
+
+test('ask ai slices over-long history entries out of every follow-up payload', async () => {
+  const view = await renderReview()
+  const longAnswer = 'The lazy migration keeps rollback cheap. '.repeat(900)
+  assert.ok(longAnswer.length > 32_000)
+  const calls: unknown[] = []
+  view.client.apply(mockApplyCtx({
+    rpc: {
+      call: async (_channel: string, _endpoint: string, payload: unknown) => {
+        calls.push(payload)
+        return { ok: true, value: { answer: longAnswer } }
+      },
+    },
+  }) as never)
+
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, 'Why lazy?') })
+  await click(findButton('Send'))
+  await flush()
+  assert.equal(calls.length, 1)
+
+  await React.act(async () => { setTextareaValue(input, 'What ships first?') })
+  await click(findButton('Send'))
+  await flush()
+  assert.equal(calls.length, 2)
+
+  const followUp = calls[1] as { history?: readonly { question: string; answer: string }[] }
+  assert.equal(followUp.history?.length, 1)
+  const entry = followUp.history?.[0]
+  assert.ok(entry)
+  assert.equal(entry.question, 'Why lazy?')
+  assert.ok(entry.answer.length <= 32_000)
+  assert.match(entry.answer, /The lazy migration keeps rollback cheap/)
+  await React.act(async () => { view.root.unmount() })
+})
+
+test('ask ai slices over-long pasted questions to the host budget on send', async () => {
+  const view = await renderReview()
+  const calls: unknown[] = []
+  view.client.apply(mockApplyCtx({
+    rpc: {
+      call: async (_channel: string, _endpoint: string, payload: unknown) => {
+        calls.push(payload)
+        return { ok: true, value: { answer: 'Sliced and sent.' } }
+      },
+    },
+  }) as never)
+
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, `q${'y'.repeat(9_000)}`) })
+  await click(findButton('Send'))
+  await flush()
+  assert.equal(calls.length, 1)
+  const first = calls[0] as { quote?: string; question: string }
+  assert.ok(first.question.length <= 8_000)
+  assert.equal(first.question.slice(0, 1), 'q')
+
+  // The sliced question is what retry would re-send; a follow-up over the same
+  // budget keeps working instead of failing forever.
+  await React.act(async () => { setTextareaValue(input, 'Why so long?') })
+  await click(findButton('Send'))
+  await flush()
+  assert.equal(calls.length, 2)
+  const second = calls[1] as { question: string }
+  assert.equal(second.question, 'Why so long?')
+  await React.act(async () => { view.root.unmount() })
+})
+
+test('ask ai keeps a host-cancelled question visible instead of silently dropping it', async () => {
+  const view = await renderReview()
+  view.client.apply(mockApplyCtx({
+    rpc: {
+      call: async () => ({ ok: false, error: { code: 'cancelled', message: 'the question was cancelled', details: {} } }),
+    },
+  }) as never)
+
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, 'Is the session alive?') })
+  await click(findButton('Send'))
+  await flush()
+
+  const entry = dom.window.document.querySelector('.dsh-plannotator-ask-entry')
+  assert.ok(entry, 'the cancelled question must stay visible')
+  assert.match(entry.textContent ?? '', /was cancelled before answering/)
+  assert.ok(findButton('Retry'))
+  await React.act(async () => { view.root.unmount() })
+})
+
+test('ask ai survives navigating away: the answer lands after the panel remounts', async () => {
+  const client = await loadClientBundle()
+  let settle: ((answer: string) => void) | undefined
+  client.apply(mockApplyCtx({
+    rpc: {
+      call: (_channel: string, _endpoint: string, _payload: unknown, signal?: AbortSignal) =>
+        new Promise((resolve, rejectInner) => {
+          settle = resolve
+          signal?.addEventListener('abort', () => { rejectInner(new DOMException('aborted', 'AbortError')) })
+        }).then(answer => ({ ok: true, value: { answer } })),
+    },
+  }) as never)
+
+  const first = await renderWithClient(client)
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, 'What ships first?') })
+  await click(findButton('Send'))
+  await flush()
+  assert.match(dom.window.document.body.textContent ?? '', /What ships first\?/)
+
+  // Simulate clicking into the answering subagent: the panel unmounts, but the
+  // in-flight request must NOT be aborted and the thread must not be lost.
+  await React.act(async () => { first.root.unmount() })
+  assert.ok(settle, 'the request must still be in flight after unmount')
+
+  const second = await renderWithClient(client)
+  assert.match(dom.window.document.body.textContent ?? '', /What ships first\?/, 'thread restored after remount')
+
+  settle?.('The answer arrived after you came back.')
+  await flush()
+  assert.match(
+    dom.window.document.querySelector('.dsh-plannotator-ask-answer')?.textContent ?? '',
+    /The answer arrived after you came back/,
+  )
+  await React.act(async () => { second.root.unmount() })
+})
+
+test('ask ai restores the thread from local storage after a reload', async () => {
+  const first = await renderReview()
+  let keepPending: (() => void) | undefined
+  first.client.apply(mockApplyCtx({
+    rpc: {
+      call: async (_channel: string, _endpoint: string, payload: unknown) => {
+        const question = (payload as { question: string }).question
+        if (question === 'Survives reloads?') return { ok: true, value: { answer: 'Persisted answer.' } }
+        // The second question stays in flight: after the reload its restored
+        // pending entry must surface as cancelled instead of hanging.
+        return new Promise((resolve, rejectInner) => {
+          keepPending = () => resolve({ ok: true, value: { answer: 'never' } })
+          void rejectInner
+        })
+      },
+    },
+  }) as never)
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, 'Survives reloads?') })
+  await click(findButton('Send'))
+  await flush()
+  assert.match(
+    dom.window.document.querySelector('.dsh-plannotator-ask-answer')?.textContent ?? '',
+    /Persisted answer/,
+  )
+  await React.act(async () => { setTextareaValue(input, 'Still in flight?') })
+  await click(findButton('Send'))
+  await flush()
+  assert.match(dom.window.document.body.textContent ?? '', /Still in flight\?/)
+  assert.ok(keepPending, 'second question must remain in flight')
+  await React.act(async () => { first.root.unmount() })
+
+  // A fresh bundle (module state reset, like a page reload) restores the
+  // thread from localStorage: the answered question shows its answer, and the
+  // stale pending one is surfaced as cancelled (the reload killed its fetch).
+  const second = await renderReview()
+  second.client.apply(mockApplyCtx({
+    rpc: {
+      call: async () => ({ ok: false, error: { code: 'cancelled', message: 'cancelled', details: {} } }),
+    },
+  }) as never)
+  await flush()
+  assert.match(dom.window.document.body.textContent ?? '', /Survives reloads\?/)
+  assert.match(dom.window.document.body.textContent ?? '', /Persisted answer/)
+  assert.match(dom.window.document.body.textContent ?? '', /Still in flight\?/)
+  assert.match(dom.window.document.body.textContent ?? '', /was cancelled before answering/)
+  await React.act(async () => { second.root.unmount() })
+})
+
+test('settling a review forgets its ask thread from memory and storage', async () => {
+  const view = await renderReview()
+  view.client.apply(mockApplyCtx({
+    rpc: {
+      call: async () => ({ ok: true, value: { answer: 'Approved anyway.' } }),
+    },
+  }) as never)
+  const askKey = 'dsh-plannotator:ask:v1:session-1:review-1'
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, 'Keep compatibility?') })
+  await click(findButton('Send'))
+  await flush()
+  assert.ok(dom.window.localStorage.getItem(askKey) !== null, 'the thread persists while the review is open')
+
+  await click(findButton('Approve'))
+  await flush()
+  assert.equal(dom.window.localStorage.getItem(askKey), null, 'settling removes the thread key')
+  assert.equal(dom.window.localStorage.length, 0)
+  await React.act(async () => { view.root.unmount() })
+})
+
+test('an answer landing after settle cannot resurrect a forgotten thread', async () => {
+  const view = await renderReview()
+  let resolveAnswer: ((value: { ok: true; value: { answer: string } }) => void) | undefined
+  view.client.apply(mockApplyCtx({
+    rpc: {
+      call: async () => new Promise(resolve => { resolveAnswer = resolve }),
+    },
+  }) as never)
+  const askKey = 'dsh-plannotator:ask:v1:session-1:review-1'
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+  await React.act(async () => { setTextareaValue(input, 'In flight when settled?') })
+  await click(findButton('Send'))
+  await flush()
+  assert.ok(dom.window.localStorage.getItem(askKey) !== null)
+
+  await click(findButton('Approve'))
+  await flush()
+  assert.equal(dom.window.localStorage.getItem(askKey), null)
+
+  // The in-flight answer lands after the scope was forgotten: the removed
+  // scope is inert, so the commit must not re-persist the key.
+  assert.ok(resolveAnswer)
+  await React.act(async () => {
+    resolveAnswer?.({ ok: true, value: { answer: 'Too late.' } })
+    await Promise.resolve()
+  })
+  await flush()
+  assert.equal(dom.window.localStorage.getItem(askKey), null, 'the forgotten thread stays forgotten')
+  await React.act(async () => { view.root.unmount() })
+})
+
+test('ask ai only clears the composer when the question is actually accepted', async () => {
+  const view = await renderReview()
+  const calls: unknown[] = []
+  view.client.apply(mockApplyCtx({
+    rpc: {
+      call: async (_channel: string, _endpoint: string, payload: unknown) => {
+        calls.push(payload)
+        return { ok: true, value: { answer: 'Sent.' } }
+      },
+    },
+  }) as never)
+  const input = dom.window.document.querySelector<HTMLTextAreaElement>('[id$="-ask"]')
+  assert.ok(input)
+
+  // A whitespace-only draft is rejected by the send gate: the Send button is
+  // disabled and the composer keeps the draft instead of eating it.
+  await React.act(async () => { setTextareaValue(input, '   ') })
+  const sendButton = [...dom.window.document.querySelectorAll('button')]
+    .find(candidate => candidate.textContent === 'Send')
+  assert.ok(sendButton)
+  assert.equal((sendButton as HTMLButtonElement).disabled, true)
+  assert.equal(input.value, '   ')
+
+  // A real question is accepted: sent once, and the composer clears.
+  await React.act(async () => { setTextareaValue(input, 'Real question') })
+  await click(findButton('Send'))
+  await flush()
+  assert.equal(calls.length, 1)
+  assert.equal(input.value, '')
+  await React.act(async () => { view.root.unmount() })
+})
+
+test('ask ai is always visible to the left of the plan preview', async () => {
+  const view = await renderReview(1600)
+  const rail = dom.window.document.querySelector('.dsh-plannotator-ask-rail')
+  assert.ok(rail, 'the Ask AI rail is always rendered')
+  assert.ok(dom.window.document.querySelector('[data-plannotator-document]'), 'the plan preview stays visible')
+  assert.ok(dom.window.document.querySelector('.dsh-plannotator-ask-thread'))
+  assert.ok(dom.window.document.querySelector('[id$="-ask"]'))
+  assert.ok(dom.window.document.querySelector('[data-plan-review-panel]'))
+  // The rail precedes the plan side in the workspace row (left of the preview).
+  const workspace = dom.window.document.querySelector('.dsh-plannotator-workspace')
+  const firstChild = workspace?.firstElementChild
+  assert.equal(firstChild?.className, 'dsh-plannotator-ask-rail')
+  assert.ok(workspace?.querySelector('.dsh-plannotator-plan-side'))
+  await React.act(async () => { view.root.unmount() })
+})
+
+test('ask ai stages a selection quote into the always-visible composer', async () => {
+  const view = await renderReview(1600)
+  const paragraph = dom.window.document.querySelector('[data-plannotator-document] p')
+  assert.ok(paragraph)
+  await React.act(async () => {
+    paragraph.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true }))
+  })
+  await click(findButton('✦ Ask AI'))
+
+  assert.equal(
+    dom.window.document.querySelector('.dsh-plannotator-ask-quote-chip span')?.textContent,
+    'Ship safely and keep compatibility.',
+  )
+  assert.ok(dom.window.document.querySelector('[data-plannotator-document]'), 'the plan preview stays visible')
+  await React.act(async () => { view.root.unmount() })
 })

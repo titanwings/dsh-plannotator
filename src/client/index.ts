@@ -1,4 +1,5 @@
-import type { ClientContext } from './contracts.js'
+import type { ClientContext, ConnectionLike } from './contracts.js'
+import { setAskAiConnection } from './ask-ai.js'
 import { PlannotatorPanel } from './PlannotatorPanel.js'
 import { selectPlanReview } from './plan-review.js'
 import { installStyles } from './styles.js'
@@ -12,6 +13,10 @@ const NS = 'dsh-plannotator'
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => installStyles(), 'dsh-plannotator: styles')
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-plannotator: locale')
+  ctx.effect(() => {
+    setAskAiConnection(ctx.get('connection') as ConnectionLike | undefined)
+    return () => { setAskAiConnection(undefined) }
+  }, 'dsh-plannotator: ask-ai connection')
   ctx.slots.inject('conversation.composer', () => ctx.slots.register({
       name: 'conversation.composer',
       priority: -10,

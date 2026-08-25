@@ -9,7 +9,11 @@ await rm('lib', { recursive: true, force: true })
 const program = ts.createProgram({
   rootNames: [
     'src/index.ts',
+    'src/host/ask-ai.ts',
     'src/client/index.ts',
+    'src/client/ask-ai.ts',
+    'src/client/ask-thread.ts',
+    'src/client/AskAISection.tsx',
     'src/client/contracts.ts',
     'src/client/locales.ts',
     'src/client/feedback.ts',
